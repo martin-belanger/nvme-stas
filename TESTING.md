@@ -65,6 +65,10 @@ Create an executable shell script (call it `stas-config.sh`) with the following 
 # Must run daemon-reload after installing nvme-stas
 sudo systemctl daemon-reload
 
+# Must tell the DBus broker to reload its configuration in case the 
+# DBus policies have changed when to installing nvme-stas.
+sudo systemctl reload dbus-broker.service
+
 #####################################################################
 # Make sure Host NQN and ID are configured 
 if [ ! -d "/etc/nvme" ]; then
