@@ -174,13 +174,24 @@ class Controller(stas.ControllerABC):
         self._retry_connect_tmr.start(self.FAST_CONNECT_RETRY_PERIOD_SEC)
 
     def _get_cfg(self):
-        '''Get configuration parameters. These may either come from the [Global]
-        section or from a "controller" entry in the configuration file. A
-        definition found in a "controller" entry overrides the same definition
-        found in the [Global] section.
+        '''Get all parameters needed to create and connect an nvme.ctrl object.
+        Transport ID parameters are included directly. Fabrics config parameters
+        may come from the [Global] section or from a "controller" entry in the
+        configuration file; a "controller" entry overrides the [Global] section.
         '''
-        cfg = {}
         service_conf = conf.SvcConf()
+        cfg = {
+            'subsysnqn': self.tid.subsysnqn,
+            'transport': self.tid.transport,
+            'traddr': self.tid.traddr,
+        }
+        if self.tid.trsvcid:
+            cfg['trsvcid'] = self.tid.trsvcid
+        if self.tid.host_traddr:
+            cfg['host_traddr'] = self.tid.host_traddr
+        if self.tid.host_iface and not service_conf.ignore_iface and self._nvme_options.host_iface_supp:
+            cfg['host_iface'] = self.tid.host_iface
+
         for option, keyword in (
             ('kato', 'keep_alive_tmo'),
             ('queue-size', 'queue_size'),
@@ -206,21 +217,8 @@ class Controller(stas.ControllerABC):
         return cfg
 
     def _do_connect(self):
-        service_conf = conf.SvcConf()
-        host_iface = (
-            self.tid.host_iface
-            if (self.tid.host_iface and not service_conf.ignore_iface and self._nvme_options.host_iface_supp)
-            else None
-        )
-        self._ctrl = nvme.ctrl(
-            self._root,
-            subsysnqn=self.tid.subsysnqn,
-            transport=self.tid.transport,
-            traddr=self.tid.traddr,
-            trsvcid=self.tid.trsvcid if self.tid.trsvcid else None,
-            host_traddr=self.tid.host_traddr if self.tid.host_traddr else None,
-            host_iface=host_iface,
-        )
+        cfg = self._get_cfg()
+        self._ctrl = nvme.ctrl(self._root, cfg)
 
         self._ctrl.discovery_ctrl = self._discovery_ctrl
 
@@ -238,7 +236,7 @@ class Controller(stas.ControllerABC):
         # This is used for bidirectional authentication
         dhchap_ctrl_key = self.tid.cfg.get('dhchap-ctrl-secret')
         if dhchap_ctrl_key and self._nvme_options.dhchap_ctrlkey_supp:
-            self._ctrl.dhchap_key = dhchap_ctrl_key
+            self._ctrl.dhchap_ctrl_key = dhchap_ctrl_key
 
         # Audit existing nvme devices. If we find a match, then
         # we'll just borrow that device instead of creating a new one.
@@ -253,12 +251,11 @@ class Controller(stas.ControllerABC):
                 self._on_connect_success, self._on_connect_fail, self._ctrl.init, self._host, int(udev_obj.sys_number)
             )
         else:
-            cfg = self._get_cfg()
             logging.debug(
                 'Controller._do_connect()           - %s Connecting to nvme control with cfg=%s', self.id, cfg
             )
             self._connect_op = gutil.AsyncTask(
-                self._on_connect_success, self._on_connect_fail, self._ctrl.connect, self._host, cfg
+                self._on_connect_success, self._on_connect_fail, self._ctrl.connect, self._host
             )
 
         self._connect_op.run_async()
