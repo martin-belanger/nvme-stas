@@ -28,6 +28,7 @@ class TestDc(ctrl.Dc):
             def __init__(this):
                 this.name = 'nvme666'
 
+            @property
             def connected(this):
                 return self._connected
 

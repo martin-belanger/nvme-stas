@@ -50,11 +50,11 @@ class Controller(stas.ControllerABC):
     def __init__(self, tid: trid.TID, service, discovery_ctrl: bool = False):
         sysconf = conf.SysConf()
         self._nvme_options = conf.NvmeOptions()
-        self._root = nvme.global_ctx()
-        self._host = nvme.host(
+        self._root = nvme.GlobalCtx()
+        self._host = nvme.Host(
             self._root, hostnqn=sysconf.hostnqn, hostid=sysconf.hostid, hostsymname=sysconf.hostsymname
         )
-        self._host.dhchap_key = sysconf.hostkey if self._nvme_options.dhchap_hostkey_supp else None
+        self._host.dhchap_host_key = sysconf.hostkey if self._nvme_options.dhchap_hostkey_supp else None
         self._udev = udev.UDEV
         self._device = None  # Refers to the nvme device (e.g. /dev/nvme[n])
         self._ctrl = None  # libnvme's nvme.ctrl object
@@ -93,7 +93,7 @@ class Controller(stas.ControllerABC):
 
     def connected(self):
         '''@brief Return whether a connection is established'''
-        return self._ctrl and self._ctrl.connected()
+        return self._ctrl and self._ctrl.connected
 
     def controller_id_dict(self) -> dict:
         '''@brief return the controller ID as a dict.'''
@@ -218,7 +218,7 @@ class Controller(stas.ControllerABC):
 
     def _do_connect(self):
         cfg = self._get_cfg()
-        self._ctrl = nvme.ctrl(self._root, cfg)
+        self._ctrl = nvme.Ctrl(self._root, cfg)
 
         self._ctrl.discovery_ctrl = self._discovery_ctrl
 
@@ -330,7 +330,7 @@ class Controller(stas.ControllerABC):
         logging.debug(
             'Controller.disconnect()            - %s | %s: keep_connection=%s', self.id, self.device, keep_connection
         )
-        if self._ctrl and self._ctrl.connected() and not keep_connection:
+        if self._ctrl and self._ctrl.connected and not keep_connection:
             logging.info('%s | %s - Disconnect initiated', self.id, self.device)
             op = gutil.AsyncTask(self._on_disconn_success, self._on_disconn_fail, self._ctrl.disconnect)
             op.run_async(disconnected_cb)
@@ -552,7 +552,7 @@ class Dc(Controller):
     def _post_registration_actions(self):
         if conf.SvcConf().pleo_enabled and self._is_ddc():
             self._get_supported_op = gutil.AsyncTask(
-                self._on_get_supported_success, self._on_get_supported_fail, self._ctrl.supported_log_pages
+                self._on_get_supported_success, self._on_get_supported_fail, self._ctrl.get_supported_log_pages
             )
             self._get_supported_op.run_async()
         else:
@@ -656,10 +656,7 @@ class Dc(Controller):
             )
             return
 
-        try:
-            dlp_supp_opts = data[nvme.NVME_LOG_LID_DISCOVERY] >> 16
-        except (TypeError, IndexError):
-            dlp_supp_opts = 0
+        dlp_supp_opts = data[nvme.NVME_LOG_LID_DISCOVERY] >> 16
 
         logging.debug(
             'Dc._on_get_supported_success()     - %s | %s: supported options = 0x%04X = %s',
