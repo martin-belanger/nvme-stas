@@ -90,9 +90,8 @@ def _data_matches_mac(data, mac):
 
 
 def mac2iface(mac: str):
-    '''@brief Find the interface that has @mac as its assigned MAC address.
-    @param mac: The MAC address to match
-    '''
+    '''Return the network interface name whose MAC address matches mac,
+    or an empty string if not found.'''
     with socket.socket(family=socket.AF_NETLINK, type=socket.SOCK_RAW, proto=socket.NETLINK_ROUTE) as sock:
         sock.sendall(GETLINKCMD)
         nlmsg = sock.recv(8192)
@@ -132,10 +131,7 @@ def mac2iface(mac: str):
 
 # ******************************************************************************
 def ip_equal(ip1, ip2):
-    '''Check whether two IP addresses are equal.
-    @param ip1: IPv4Address or IPv6Address object
-    @param ip2: IPv4Address or IPv6Address object
-    '''
+    '''Return True if two IP addresses are equal, handling IPv4-mapped IPv6 comparison.'''
     if not isinstance(ip1, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
         return False
     if not isinstance(ip2, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
@@ -151,12 +147,9 @@ def ip_equal(ip1, ip2):
 
 # ******************************************************************************
 def get_ipaddress_obj(ipaddr, ipv4_mapped_convert=False):
-    '''@brief Return a IPv4Address or IPv6Address depending on whether @ipaddr
-    is a valid IPv4 or IPv6 address. Return None otherwise.
-
-    If ipv4_mapped_resolve is set to True, IPv6 addresses that are IPv4-Mapped,
-    will be converted to their IPv4 equivalent.
-    '''
+    '''Return an IPv4Address or IPv6Address for ipaddr, or None if invalid.
+    If ipv4_mapped_convert is True, IPv4-mapped IPv6 addresses are converted
+    to their IPv4 equivalent.'''
     try:
         ip = ipaddress.ip_address(ipaddr)
     except ValueError:
@@ -172,10 +165,9 @@ def get_ipaddress_obj(ipaddr, ipv4_mapped_convert=False):
 
 # ******************************************************************************
 def net_if_addrs():
-    '''@brief Return a dictionary listing every IP addresses for each interface.
-    The first IP address of a list is the primary address used as the default
-    source address.
-    @example: {
+    '''Return a dict mapping interface names to their IP addresses, grouped by
+    IP version (4 and 6). The first address in each list is the primary address.
+    Example: {
         'wlp0s20f3': {
              4: [IPv4Address('10.0.0.28')],
              6: [
@@ -252,10 +244,8 @@ def net_if_addrs():
 
 # ******************************************************************************
 def get_interface(ifaces: dict, src_addr):
-    '''Get interface for given source address
-    @param ifaces: Interface info previously returned by @net_if_addrs()
-    @param src_addr: IPv4Address or IPv6Address object
-    '''
+    '''Return the interface name in ifaces whose address matches src_addr,
+    or an empty string. ifaces should be the dict returned by net_if_addrs().'''
     if not isinstance(src_addr, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
         return ''
 

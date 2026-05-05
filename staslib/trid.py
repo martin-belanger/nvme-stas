@@ -9,8 +9,14 @@
 '''This module defines the Transport Identifier Object, which is used
 throughout nvme-stas to uniquely identify a Controller'''
 
+import inspect
 import hashlib
 from staslib import conf
+
+# usedforsecurity was added to hashlib.md5 in Python 3.9. Pass it when available
+# to suppress FIPS-mode rejection of MD5 (used here as a non-cryptographic hash).
+# Using **_MD5_KWARGS avoids a static 3.9-only kwarg that would break older Python.
+_MD5_KWARGS = {'usedforsecurity': False} if 'usedforsecurity' in inspect.signature(hashlib.md5).parameters else {}
 
 
 class TID:
@@ -20,8 +26,7 @@ class TID:
     DISC_IP_PORT = '8009'
 
     def __init__(self, cid: dict):
-        '''@param cid: Controller Identifier. A dictionary with the following
-        contents.
+        '''Construct a TID from a controller identifier dict with the following keys:
         {
             # Transport parameters
             'transport':   str, # [mandatory]
@@ -75,9 +80,17 @@ class TID:
             self._host_nqn,
         )
         self._hash = int.from_bytes(
-            hashlib.md5(''.join(self._key).encode('utf-8')).digest(), 'big'
+            hashlib.md5(''.join(self._key).encode('utf-8'), **_MD5_KWARGS).digest(), 'big'
         )  # We need a consistent hash between restarts
-        self._id = f'({self._transport}, {self._traddr}, {self._trsvcid}{", " + self._subsysnqn if self._subsysnqn else ""}{", " + self._host_iface if self._host_iface else ""}{", " + self._host_traddr if self._host_traddr else ""})'
+
+        parts = [self._transport, self._traddr, self._trsvcid]
+        if self._subsysnqn:
+            parts.append(self._subsysnqn)
+        if self._host_iface:
+            parts.append(self._host_iface)
+        if self._host_traddr:
+            parts.append(self._host_traddr)
+        self._id = '(' + ', '.join(parts) + ')'
 
     host_traddr = property(lambda self: self._host_traddr)
     host_iface = property(lambda self: self._host_iface)

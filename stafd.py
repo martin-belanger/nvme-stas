@@ -76,32 +76,29 @@ if __name__ == '__main__':
             host_nqn: str,
             device: str,
         ):
-            '''@brief Signal sent when log pages have changed.'''
+            '''Signal sent when log pages have changed.'''
 
         @dasbus.server.interface.dbus_signal
         def dc_removed(self):
-            '''@brief Signal sent when a discovery controller is removed
-            (indicated by a change in the discovery log pages).'''
+            '''Signal sent when a discovery controller is removed (indicated by a change in the discovery log pages).'''
 
         @property
         def tron(self):
-            '''@brief Get Trace ON property'''
+            '''Return the Trace ON (tron) flag.'''
             return STAF.tron
 
         @tron.setter
         def tron(self, value):
-            '''@brief Set Trace ON property'''
+            '''Set the Trace ON (tron) flag.'''
             STAF.tron = value
 
         @property
         def log_level(self) -> str:
-            '''@brief Get Log Level property'''
+            '''Return the current log level.'''
             return log.level()
 
         def process_info(self) -> str:
-            '''@brief Get status info (for debug)
-            @return A string representation of a json object.
-            '''
+            '''Return a JSON string with the daemon's runtime status info (used for debug).'''
             info = {
                 'tron': STAF.tron,
                 'log-level': self.log_level,
@@ -110,17 +107,17 @@ if __name__ == '__main__':
             return json.dumps(info)
 
         def controller_info(self, transport, traddr, trsvcid, subsysnqn, host_traddr, host_iface, host_nqn) -> str:
-            '''@brief D-Bus method used to return information about a controller'''
+            '''Return a JSON string with information about the specified controller.'''
             controller = STAF.get_controller(transport, traddr, trsvcid, subsysnqn, host_traddr, host_iface, host_nqn)
             return json.dumps(controller.info()) if controller else '{}'
 
         def get_log_pages(self, transport, traddr, trsvcid, subsysnqn, host_traddr, host_iface, host_nqn) -> list:
-            '''@brief D-Bus method used to retrieve the discovery log pages from one controller'''
+            '''Return the discovery log pages from the specified controller.'''
             controller = STAF.get_controller(transport, traddr, trsvcid, subsysnqn, host_traddr, host_iface, host_nqn)
             return controller.log_pages() if controller else list()
 
         def get_all_log_pages(self, detailed) -> str:
-            '''@brief D-Bus method used to retrieve the discovery log pages from all controllers'''
+            '''Return a JSON string with the discovery log pages from all controllers.'''
             log_pages = list()
             for controller in STAF.get_controllers():
                 log_pages.append(
@@ -132,7 +129,7 @@ if __name__ == '__main__':
             return json.dumps(log_pages)
 
         def list_controllers(self, detailed) -> list:
-            '''@brief Return the list of discovery controller IDs'''
+            '''Return the list of discovery controller IDs.'''
             return [
                 controller.details() if detailed else controller.controller_id_dict()
                 for controller in STAF.get_controllers()

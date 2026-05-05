@@ -82,14 +82,14 @@ class CtrlTerminator:
                 self._audit_tmr.start()
 
     def pending_disposal(self, tid):
-        '''Check whether @tid is pending disposal'''
+        '''Return True if tid is pending disposal.'''
         for controller in self._controllers:
             if controller.tid == tid:
                 return True
         return False
 
     def info(self):
-        '''@brief Get info about this object (used for debug)'''
+        '''Return info about this object (used for debug).'''
         info = {
             'terminator.audit timer': str(self._audit_tmr),
         }
@@ -156,7 +156,7 @@ class CtrlTerminator:
 
 # ******************************************************************************
 class Service(stas.ServiceABC):
-    '''@brief Base class used to manage a STorage Appliance Service'''
+    '''Base class for managing a STorage Appliance Service.'''
 
     def __init__(self, args, default_conf, reload_hdlr):
         self._udev = udev.UDEV
@@ -187,7 +187,7 @@ class Service(stas.ServiceABC):
             self._terminator.dispose(controller, self._on_final_disconnect, keep_connections)
 
     def info(self) -> dict:
-        '''@brief Get the status info for this object (used for debug)'''
+        '''Return the status info for this object (used for debug).'''
         info = super().info()
         if self._terminator:
             info.update(self._terminator.info())
@@ -195,7 +195,7 @@ class Service(stas.ServiceABC):
 
     @stas.ServiceABC.tron.setter
     def tron(self, value):
-        '''@brief Set Trace ON property'''
+        '''Set the Trace ON (tron) flag.'''
         super(__class__, self.__class__).tron.__set__(self, value)
 
 
@@ -302,23 +302,20 @@ class Stac(Service):
             self._cfg_soak_tmr.start(self.CONF_STABILITY_SOAK_TIME_SEC)
 
     def _on_add_event(self, udev_obj):
-        '''@brief This function is called when a "add" event is received from
-        the kernel for an NVMe device. This is used to trigger an audit and make
-        sure that the connection to an I/O controller is allowed.
+        '''Called when an "add" event is received from the kernel for an NVMe device,
+        to audit and verify that the I/O controller connection is allowed.
 
         WARNING: There is a race condition with the "add" event from the kernel.
         The kernel sends the "add" event a bit early and the sysfs attributes
         associated with the nvme object are not always fully initialized.
-        To workaround this problem we use a soaking timer to give time for the
-        sysfs attributes to stabilize.
+        To work around this, a soaking timer gives time for the sysfs attributes
+        to stabilize.
         '''
         logging.debug('Stac._on_add_event(()              - Received "add" event: %s', udev_obj.sys_name)
         self._add_event_soak_tmr.start()
 
     def _on_add_event_soaked(self):
-        '''@brief After the add event has been soaking for ADD_EVENT_SOAK_TIME_SEC
-        seconds, we can audit the connections.
-        '''
+        '''Audit connections after the "add" event soak period has elapsed.'''
         if self._alive():
             svc_conf = conf.SvcConf()
             if svc_conf.disconnect_scope == 'all-connections-matching-disconnect-trtypes':
@@ -339,15 +336,11 @@ class Stac(Service):
             self._udev.unregister_for_action_events('add', self._on_add_event)
 
     def _keep_connections_on_exit(self):
-        '''@brief Determine whether connections should remain when the
-        process exits.
-        '''
+        '''Return True if connections should persist when stacd exits.'''
         return True
 
     def _reload_hdlr(self):
-        '''@brief Reload configuration file. This is triggered by the SIGHUP
-        signal, which can be sent with "systemctl reload stacd".
-        '''
+        '''Reload the configuration file. Triggered by SIGHUP (systemctl reload stacd).'''
         if not self._alive():
             return GLib.SOURCE_REMOVE
 
@@ -368,13 +361,13 @@ class Stac(Service):
         if self._staf:
             try:
                 return json.loads(self._staf.get_all_log_pages(True))
-            except dasbus.error.DBusError:
-                pass
+            except dasbus.error.DBusError as ex:
+                logging.debug('Stac._get_log_pages_from_stafd()   - %s', ex)
 
         return list()
 
     def _config_ctrls_finish(self, configured_ctrl_list: list):
-        '''@param configured_ctrl_list: list of TIDs'''
+        '''Finish I/O controller configuration after hostname resolution, then reconcile running controllers.'''
         # This is a callback function, which may be called after the service
         # has been signalled to stop. So let's make sure the service is still
         # alive and well before continuing.
@@ -439,7 +432,7 @@ class Stac(Service):
         self._dump_last_known_config(self._controllers)
 
     def _connect_to_staf(self, _):
-        '''@brief Hook up DBus signal handlers for signals from stafd.'''
+        '''Connect to the stafd D-Bus interface and hook up signal handlers.'''
         if not self._alive():
             return
 
@@ -513,17 +506,12 @@ ACTION=="change", SUBSYSTEM=="fc", ENV{FC_EVENT}=="nvmediscovery", \
 
 
 def _udev_rule_ctrl(suppress):
-    '''@brief We override the standard udev rule installed by nvme-cli, i.e.
-    '/usr/lib/udev/rules.d/70-nvmf-autoconnect.rules', with a copy into
-    /run/udev/rules.d. The goal is to suppress the udev rule that controls TCP
-    connections to I/O controllers. This is to avoid race conditions between
-    stacd and udevd. This is configurable. See "udev-rule" in stacd.conf
-    for details.
-
-    @param enable: When True, override nvme-cli's udev rule and prevent TCP I/O
-    Controller connections by nvme-cli. When False, allow nvme-cli's udev rule
-    to make TCP I/O connections.
-    @type enable: bool
+    '''Override the udev rule installed by nvme-cli
+    ('/usr/lib/udev/rules.d/70-nvmf-autoconnect.rules') by placing a copy in
+    /run/udev/rules.d, suppressing TCP I/O controller auto-connections by udevd
+    to avoid race conditions with stacd. When suppress is False, the override is
+    removed and nvme-cli's rule is restored. Configurable via "udev-rule" in
+    stacd.conf.
     '''
     udev_rule_file = pathlib.Path('/run/udev/rules.d', '70-nvmf-autoconnect.rules')
     if suppress:
@@ -557,8 +545,7 @@ def _is_dlp_changed_aen(udev_obj):
 
 
 def _event_matches(udev_obj, nvme_events):
-    '''Check whether we received an NVMe Event matching
-    one of the events listed in @nvme_events'''
+    '''Return True if the udev object carries an NVMe Event matching one of the events in nvme_events.'''
     nvme_event = udev_obj.get('NVME_EVENT')
     if nvme_event not in nvme_events:
         return False
@@ -605,7 +592,7 @@ class Staf(Service):
         _udev_rule_ctrl(True)
 
     def info(self) -> dict:
-        '''@brief Get the status info for this object (used for debug)'''
+        '''Return the status info for this object (used for debug).'''
         info = super().info()
         info['avahi'] = self._avahi.info()
         return info
@@ -648,15 +635,11 @@ class Staf(Service):
         return controllers
 
     def _keep_connections_on_exit(self):
-        '''@brief Determine whether connections should remain when the
-        process exits.
-        '''
+        '''Return True if connections should persist when stafd exits.'''
         return conf.SvcConf().persistent_connections
 
     def _reload_hdlr(self):
-        '''@brief Reload configuration file. This is triggered by the SIGHUP
-        signal, which can be sent with "systemctl reload stafd".
-        '''
+        '''Reload the configuration file. Triggered by SIGHUP (systemctl reload stafd).'''
         if not self._alive():
             return GLib.SOURCE_REMOVE
 
@@ -675,19 +658,14 @@ class Staf(Service):
         return GLib.SOURCE_CONTINUE
 
     def is_avahi_reported(self, tid):
-        '''@brief Return whether @tid is being reported by the Avahi daemon.
-        @return: True if the Avahi daemon is reporting it, False otherwise.
-        '''
+        '''Return True if tid is currently being reported by the Avahi daemon.'''
         for cid in self._avahi.get_controllers():
             if trid.TID(cid) == tid:
                 return True
         return False
 
     def log_pages_changed(self, controller, device):
-        '''@brief Function invoked when a controller's cached log pages
-        have changed. This will emit a D-Bus signal to inform
-        other applications that the cached log pages have changed.
-        '''
+        '''Emit the log_pages_changed D-Bus signal when a controller's cached log pages have changed.'''
         self._dbus_iface.log_pages_changed.emit(
             controller.tid.transport,
             controller.tid.traddr,
@@ -700,10 +678,7 @@ class Staf(Service):
         )
 
     def dc_removed(self):
-        '''@brief Function invoked when one or more discovery controllers have
-        been removed. This will emit a D-Bus signal to inform other applications
-        (e.g. stacd) that they should re-evaluate their I/O controller list.
-        '''
+        '''Emit the dc_removed D-Bus signal when one or more discovery controllers have been removed.'''
         self._dbus_iface.dc_removed.emit()
 
     def _referrals(self) -> list:
@@ -719,14 +694,9 @@ class Staf(Service):
         ]
 
     def _config_ctrls_finish(self, configured_ctrl_list: list):
-        '''@brief Finish discovery controllers configuration after
-        hostnames (if any) have been resolved. All the logic associated
-        with discovery controller creation/deletion is found here.  To
-        avoid calling this algorithm repetitively for each and every events,
-        it is called after a soaking period controlled by self._cfg_soak_tmr.
-
-        @param configured_ctrl_list: List of TIDs configured in stafd.conf with
-        all hostnames resolved to their corresponding IP addresses.
+        '''Finish discovery controller configuration after hostname resolution.
+        All creation/deletion logic for discovery controllers is here. Called
+        after the self._cfg_soak_tmr soak period expires.
         '''
         # This is a callback function, which may be called after the service
         # has been signalled to stop. So let's make sure the service is still
@@ -822,17 +792,13 @@ class Staf(Service):
             self._cfg_soak_tmr.start()
 
     def controller_unresponsive(self, tid):
-        '''@brief Function invoked when a controller becomes unresponsive and
-        needs to be removed.
-        '''
+        '''Called when a controller becomes unresponsive and needs to be removed.'''
         if self._alive() and self._cfg_soak_tmr is not None:
             logging.debug('Staf.controller_unresponsive()     - tid = %s', tid)
             self._cfg_soak_tmr.start()
 
     def referrals_changed(self):
-        '''@brief Function invoked when a controller's cached referrals
-        have changed.
-        '''
+        '''Called when a controller's cached referrals have changed.'''
         if self._alive() and self._cfg_soak_tmr is not None:
             logging.debug('Staf.referrals_changed()')
             self._cfg_soak_tmr.start()

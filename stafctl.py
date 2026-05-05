@@ -19,7 +19,7 @@ from staslib import conf, defs
 
 
 def tron(args):
-    '''@brief Trace ON'''
+    '''Enable tracing in stafd.'''
     bus = SystemMessageBus()
     iface = bus.get_proxy(defs.STAFD_DBUS_NAME, defs.STAFD_DBUS_PATH)
     iface.tron = True
@@ -27,7 +27,7 @@ def tron(args):
 
 
 def troff(args):
-    '''@brief Trace OFF'''
+    '''Disable tracing in stafd.'''
     bus = SystemMessageBus()
     iface = bus.get_proxy(defs.STAFD_DBUS_NAME, defs.STAFD_DBUS_PATH)
     iface.tron = False
@@ -47,7 +47,7 @@ def _extract_cid(ctrl):
 
 
 def status(args):
-    '''@brief retrieve stafd's status information'''
+    '''Retrieve and print stafd's runtime status information.'''
     bus = SystemMessageBus()
     iface = bus.get_proxy(defs.STAFD_DBUS_NAME, defs.STAFD_DBUS_PATH)
     info = json.loads(iface.process_info())
@@ -65,9 +65,7 @@ def status(args):
 
 
 def ls(args):
-    '''@brief List the discovery controllers that stafd is
-    connected (or trying to connect) to.
-    '''
+    '''List the discovery controllers that stafd is connected (or trying to connect) to.'''
     bus = SystemMessageBus()
     iface = bus.get_proxy(defs.STAFD_DBUS_NAME, defs.STAFD_DBUS_PATH)
     info = iface.list_controllers(args.detailed)
@@ -75,7 +73,7 @@ def ls(args):
 
 
 def dlp(args):
-    '''@brief retrieve a controller's discovery log pages from stafd'''
+    '''Retrieve and print a controller's discovery log pages from stafd.'''
     bus = SystemMessageBus()
     iface = bus.get_proxy(defs.STAFD_DBUS_NAME, defs.STAFD_DBUS_PATH)
     info = iface.get_log_pages(
@@ -91,7 +89,7 @@ def dlp(args):
 
 
 def adlp(args):
-    '''@brief retrieve all of the controller's discovery log pages from stafd'''
+    '''Retrieve and print discovery log pages from all controllers in stafd.'''
     bus = SystemMessageBus()
     iface = bus.get_proxy(defs.STAFD_DBUS_NAME, defs.STAFD_DBUS_PATH)
     info = json.loads(iface.get_all_log_pages(args.detailed))

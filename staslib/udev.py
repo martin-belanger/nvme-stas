@@ -19,9 +19,10 @@ from staslib import defs, iputil, trid
 
 # ******************************************************************************
 class Udev:
-    '''@brief Udev event monitor. Provide a way to register for udev events.
-    WARNING: THE singleton.Singleton PATTERN CANNOT BE USED WITH THIS CLASS.
-    IT INTERFERES WITH THE pyudev INTERNALS, WHICH CAUSES OBJECT CLEAN UP TO FAIL.
+    '''Udev event monitor. Provides a way to register for udev events.
+
+    WARNING: the Singleton pattern cannot be used with this class — it
+    interferes with pyudev internals and causes object cleanup to fail.
     '''
 
     def __init__(self):
@@ -55,10 +56,7 @@ class Udev:
         self._action_event_registry = None
 
     def get_nvme_device(self, sys_name):
-        '''@brief Get the udev device object associated with an nvme device.
-        @param sys_name: The device system name (e.g. 'nvme1')
-        @return A pyudev.device._device.Device object
-        '''
+        '''Return the pyudev.Device for the given nvme device sys_name (e.g. 'nvme1'), or None on error.'''
         device_node = os.path.join('/dev', sys_name)
         try:
             return pyudev.Devices.from_device_file(self._context, device_node)
@@ -67,37 +65,29 @@ class Udev:
             return None
 
     def is_action_cback_registered(self, action: str, user_cback):
-        '''Returns True if @user_cback is registered for @action. False otherwise.
-        @param action: one of 'add', 'remove', 'change'.
-        @param user_cback: A callback function with this signature: cback(udev_obj)
-        '''
+        '''Return True if user_cback is registered for action ('add', 'remove', or 'change').'''
         return user_cback in self._action_event_registry.get(action, set())
 
     def register_for_action_events(self, action: str, user_cback):
-        '''@brief Register a callback function to be called when udev events
-        for a specific action are received.
-        @param action: one of 'add', 'remove', 'change'.
-        '''
+        '''Register a callback to be called when a udev event matching action is received.
+        action is one of 'add', 'remove', 'change'.'''
         self._action_event_registry.setdefault(action, set()).add(user_cback)
 
     def unregister_for_action_events(self, action: str, user_cback):
-        '''@brief The opposite of register_for_action_events()'''
+        '''Unregister a callback previously registered with register_for_action_events().'''
         try:
             self._action_event_registry.get(action, set()).remove(user_cback)
         except KeyError:  # Raise if user_cback already removed
             pass
 
     def register_for_device_events(self, sys_name: str, user_cback):
-        '''@brief Register a callback function to be called when udev events
-        are received for a specific nvme device.
-        @param sys_name: The device system name (e.g. 'nvme1')
-        @param user_cback: Callback with signature cback(udev_obj)
-        '''
+        '''Register user_cback to be called when a udev event is received for sys_name (e.g. 'nvme1').
+        Callback signature: cback(udev_obj).'''
         if sys_name:
             self._device_event_registry[sys_name] = user_cback
 
     def unregister_for_device_events(self, user_cback):
-        '''@brief The opposite of register_for_device_events().
+        '''Unregister a callback previously registered with register_for_device_events().
 
         Note: The registration API takes (sys_name, user_cback) but the
         unregistration API takes only (user_cback). This asymmetry is
@@ -112,7 +102,7 @@ class Udev:
                 break
 
     def get_attributes(self, sys_name: str, attr_ids) -> dict:
-        '''@brief Get all the attributes associated with device @sys_name'''
+        '''Return a dict of the requested attributes for the device identified by sys_name.'''
         attrs = {attr_id: '' for attr_id in attr_ids}
         if sys_name and sys_name != 'nvme?':
             udev = self.get_nvme_device(sys_name)
@@ -128,7 +118,7 @@ class Udev:
 
     @staticmethod
     def is_dc_device(device):
-        '''@brief check whether device refers to a Discovery Controller'''
+        '''Return True if device refers to a Discovery Controller.'''
         subsysnqn = device.attributes.get('subsysnqn')
         if subsysnqn is not None and subsysnqn.decode() == defs.WELL_KNOWN_DISC_NQN:
             return True
@@ -141,14 +131,14 @@ class Udev:
 
         # Imply Discovery controller based on the absence of children.
         # Discovery Controllers have no children devices
-        if len(list(device.children)) == 0:
+        if not any(device.children):
             return True
 
         return False
 
     @staticmethod
     def is_ioc_device(device):
-        '''@brief check whether device refers to an I/O Controller'''
+        '''Return True if device refers to an I/O Controller.'''
         # Note: Prior to 5.18 linux didn't expose the cntrltype through
         # the sysfs. So, this may return None on older kernels.
         cntrltype = device.attributes.get('cntrltype')
@@ -157,7 +147,7 @@ class Udev:
 
         # Imply I/O controller based on the presence of children.
         # I/O Controllers have children devices
-        if len(list(device.children)) != 0:
+        if any(device.children):
             return True
 
         return False
@@ -233,9 +223,8 @@ class Udev:
 
     @staticmethod
     def _cid_matches_tid(tid, cid, ifaces):
-        '''Check if existing controller's cid matches candidate controller's tid.
-        @param cid: The Connection ID of an existing controller (from the sysfs).
-        @param tid: The Transport ID of a candidate controller.
+        '''Check if an existing controller's cid (read from sysfs) matches a
+        candidate controller's tid.
 
         We're trying to find if an existing connection (specified by cid) can
         be re-used for the candidate controller (specified by tid).
@@ -324,10 +313,7 @@ class Udev:
         return True
 
     def find_nvme_dc_device(self, tid):
-        '''@brief  Find the nvme device associated with the specified
-                Discovery Controller.
-        @return The device if a match is found, None otherwise.
-        '''
+        '''Return the pyudev.Device for the Discovery Controller matching tid, or None.'''
         devices = self._context.list_devices(
             subsystem='nvme', NVME_TRADDR=tid.traddr, NVME_TRSVCID=tid.trsvcid, NVME_TRTYPE=tid.transport
         )
@@ -346,10 +332,7 @@ class Udev:
         return None
 
     def find_nvme_ioc_device(self, tid):
-        '''@brief  Find the nvme device associated with the specified
-                I/O Controller.
-        @return The device if a match is found, None otherwise.
-        '''
+        '''Return the pyudev.Device for the I/O Controller matching tid, or None.'''
         devices = self._context.list_devices(
             subsystem='nvme', NVME_TRADDR=tid.traddr, NVME_TRSVCID=tid.trsvcid, NVME_TRTYPE=tid.transport
         )
@@ -368,9 +351,7 @@ class Udev:
         return None
 
     def get_nvme_ioc_tids(self, transports):
-        '''@brief  Find all the I/O controller nvme devices in the system.
-        @return A list of pyudev.device._device.Device objects
-        '''
+        '''Return a list of TIDs for all I/O controller NVMe devices currently in the system.'''
         tids = []
         devices = self._context.list_devices(subsystem='nvme')
         if devices:
@@ -446,14 +427,10 @@ class Udev:
 
     @staticmethod
     def get_key_from_attr(device, attr, key, delim=','):
-        '''Get attribute specified by attr, which is composed of key=value pairs.
-        Then return the value associated with key.
-        @param device: The Device object
-        @param attr: The device's attribute to get
-        @param key: The key to look for in the attribute
-        @param delim: Delimiter used between key=value pairs.
-        @example:
-            "address" attribute contains "trtype=tcp,traddr=10.10.1.100,trsvcid=4420,host_traddr=10.10.1.50"
+        '''Return the value associated with key in the device attribute attr,
+        where attr is a delim-separated list of key=value pairs.
+        Example: the "address" attribute contains
+        "trtype=tcp,traddr=10.10.1.100,trsvcid=4420,host_traddr=10.10.1.50".
         '''
         attr_str = Udev._get_attribute(device, attr)
         if not attr_str:
@@ -474,7 +451,7 @@ class Udev:
 
     @staticmethod
     def get_tid(device, ifaces):
-        '''@brief return the Transport ID associated with a udev device'''
+        '''Return the Transport ID (TID) associated with a udev device.'''
         cid = Udev.get_cid(device)
         if cid['transport'] == 'tcp':
             src_addr = cid['src-addr']
@@ -488,7 +465,7 @@ class Udev:
 
     @staticmethod
     def get_cid(device):
-        '''@brief return the Connection ID associated with a udev device'''
+        '''Return the Connection ID dict for a udev device.'''
         cid = {
             'transport': Udev._get_property(device, 'NVME_TRTYPE'),
             'traddr': Udev._get_property(device, 'NVME_TRADDR'),

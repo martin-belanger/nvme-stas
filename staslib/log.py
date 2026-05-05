@@ -14,10 +14,8 @@ from staslib import defs
 
 
 def init(syslog: bool):
-    '''Init log module
-    @param syslog: True to send messages to the syslog,
-                   False to send messages to stdout.
-    '''
+    '''Initialise the logging subsystem. If syslog is True, messages are sent to
+    the journal (or syslog); if False, they go to stdout.'''
     log = logging.getLogger()
     log.propagate = False
 
@@ -43,7 +41,7 @@ def init(syslog: bool):
 
 
 def level() -> str:
-    '''@brief return current log level'''
+    '''Return the current log level as a string.'''
     logger = logging.getLogger()
     return str(logging.getLevelName(logger.getEffectiveLevel()))
 

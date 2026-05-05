@@ -18,7 +18,7 @@ from staslib import conf, iputil, trid
 
 # ******************************************************************************
 class GTimer:
-    '''@brief Convenience class to wrap GLib timers'''
+    '''Convenience wrapper around GLib one-shot timers.'''
 
     def __init__(
         self, interval_sec: float = 0, user_cback=lambda: GLib.SOURCE_REMOVE, *user_data, priority=GLib.PRIORITY_DEFAULT
@@ -35,7 +35,7 @@ class GTimer:
         self._user_data = None
 
     def kill(self):
-        '''@brief Used to release all resources associated with a timer.'''
+        '''Stop the timer and release all associated resources.'''
         self._release_resources()
 
     def __str__(self):
@@ -51,22 +51,20 @@ class GTimer:
         return retval
 
     def stop(self):
-        '''@brief Stop timer'''
+        '''Stop the timer.'''
         if self._source is not None:
             self._source.destroy()
             self._source = None
 
     def start(self, new_interval_sec: float = -1.0):
-        '''@brief Start (or restart) timer.
+        '''Start or restart the timer.
 
-        If the timer is not yet running, create and attach a new GLib source
-        that will fire after @new_interval_sec (or the previously set interval
-        if @new_interval_sec is negative).
+        If not yet running, attach a new GLib source that fires after
+        new_interval_sec (or the previously configured interval if
+        new_interval_sec is negative).
 
-        If the timer is already running, reschedule it to fire @new_interval_sec
-        from NOW (i.e. the deadline is reset relative to the current monotonic
-        clock, not the original start time).
-        '''
+        If already running, reschedule it to fire new_interval_sec from NOW
+        (the deadline is reset relative to the current monotonic clock).'''
         if new_interval_sec >= 0:
             self._interval_sec = float(new_interval_sec)
 
@@ -78,35 +76,33 @@ class GTimer:
             if self._interval_sec.is_integer():
                 self._source = GLib.timeout_source_new_seconds(int(self._interval_sec))  # seconds resolution
             else:
-                self._source = GLib.timeout_source_new(self._interval_sec * 1000.0)  # mili-seconds resolution
+                self._source = GLib.timeout_source_new(self._interval_sec * 1000.0)  # milli-seconds resolution
 
             self._source.set_priority(self._priority)
             self._source.set_callback(self._callback)
             self._source.attach()
 
     def clear(self):
-        '''@brief Make timer expire now. The callback function
-        will be invoked immediately by the main loop.
-        '''
+        '''Make the timer expire immediately on the next main loop iteration.'''
         if self._source is not None:
             self._source.set_ready_time(0)  # Expire now!
 
     def set_callback(self, user_cback, *user_data):
-        '''@brief set the callback function to invoke when timer expires'''
+        '''Set the callback function to invoke when the timer fires.'''
         self._user_cback = user_cback
         self._user_data = user_data
 
     def set_timeout(self, new_interval_sec: float):
-        '''@brief set the timer's duration'''
+        '''Set the timer duration in seconds.'''
         if new_interval_sec >= 0:
             self._interval_sec = float(new_interval_sec)
 
     def get_timeout(self):
-        '''@brief get the timer's duration'''
+        '''Return the timer duration in seconds.'''
         return self._interval_sec
 
     def time_remaining(self) -> float:
-        '''@brief Get how much time remains on a timer before it fires.'''
+        '''Return the number of seconds remaining before the timer fires, or 0 if stopped.'''
         if self._source is not None:
             delta_us = self._source.get_ready_time() - self._source.get_time()  # monotonic time in micro-seconds
             if delta_us > 0:
@@ -117,23 +113,17 @@ class GTimer:
 
 # ******************************************************************************
 class NameResolver:
-    '''@brief DNS resolver to convert host names to IP addresses.'''
+    '''Asynchronous DNS resolver for converting controller hostnames to IP addresses.'''
 
     def __init__(self):
         self._resolver = Gio.Resolver.get_default()
 
     def resolve_ctrl_async(self, cancellable, controllers_in: list, callback):
-        '''@brief The traddr fields may specify a hostname instead of an IP
-        address. We need to resolve all the host names to addresses.
-        Resolving hostnames may take a while as a DNS server may need
-        to be contacted. For that reason, we're using async APIs with
-        callbacks to resolve all the hostnames.
+        '''Resolve any hostnames in controllers_in to IP addresses asynchronously,
+        then invoke callback with the resolved list. Controllers that are already
+        IP addresses are passed through immediately.
 
-        The callback @callback will be called once all hostnames have
-        been resolved.
-
-        @param controllers_in: List of trid.TID
-        '''
+        Callback signature: def callback(controllers: list[trid.TID]) -> None:'''
         pending_resolution_count = 0
         controllers_out = []
         service_conf = conf.SvcConf()
@@ -149,6 +139,8 @@ class NameResolver:
                 else:
                     logging.error('%s', err.message)
 
+                # Following was kept for reference — syntax is non-obvious and required introspection to discover.
+                # Uncomment to add finer-grained error handling if needed.
                 # if err.matches(Gio.resolver_error_quark(), Gio.ResolverError.TEMPORARY_FAILURE):
                 # elif err.matches(Gio.resolver_error_quark(), Gio.ResolverError.NOT_FOUND):
                 # elif err.matches(Gio.resolver_error_quark(), Gio.ResolverError.INTERNAL):
@@ -215,32 +207,19 @@ class NameResolver:
 
 # ******************************************************************************
 class _TaskRunner(GObject.Object):
-    '''@brief This class allows running methods asynchronously in a thread.'''
+    '''Run a callable in a GLib thread pool and deliver the result via a GLib callback.'''
 
     def __init__(self, user_function, *user_args):
-        '''@param user_function: function to run inside a thread
-        @param user_args: arguments passed to @user_function
-        '''
         super().__init__()
         self._user_function = user_function
         self._user_args = user_args
 
     def communicate(self, cancellable, cb_function, *cb_args):
-        '''@param cancellable: A Gio.Cancellable object that can be used to
-                            cancel an in-flight async command.
-        @param cb_function: User callback function to call when the async
-                            command has completed.  The callback function
-                            will be passed these arguments:
+        '''Run the function in a thread and invoke cb_function on completion.
 
-                                (runner, result, *cb_args)
-
-                            Where:
-                                runner: This _TaskRunner object instance
-                                result: A GObject.Object instance that contains the result
-                                cb_args: The cb_args arguments passed to communicate()
-
-        @param cb_args: User arguments to pass to @cb_function
-        '''
+        cb_function receives (runner, result, *cb_args), where result is a
+        GObject.Object. Use communicate_finish() inside cb_function to extract
+        the return value or error.'''
 
         def in_thread_exec(task, self, task_data, cancellable):
             if task.return_error_if_cancelled():
@@ -259,12 +238,8 @@ class _TaskRunner(GObject.Object):
         return task
 
     def communicate_finish(self, result):
-        '''@brief Use this function in your callback (see @cb_function) to
-         extract data from the result object.
-
-        @return On success (True, data, None),
-        On failure (False, None, err: GLib.Error)
-        '''
+        '''Extract the result from an async operation inside a cb_function callback.
+        Returns (True, data, None) on success, or (False, None, GLib.Error) on failure.'''
         try:
             success, value = result.propagate_value()
             return success, value.result, None
@@ -279,11 +254,6 @@ class AsyncTask:
     '''
 
     def __init__(self, on_success_callback, on_failure_callback, operation, *op_args):
-        '''@param on_success_callback: Callback method invoked when @operation completes successfully
-        @param on_failure_callback: Callback method invoked when @operation fails
-        @param operation: Operation (i.e. a function) to execute asynchronously
-        @param op_args: Arguments passed to operation
-        '''
         self._cancellable = Gio.Cancellable()
         self._operation = operation
         self._op_args = op_args
@@ -334,54 +304,39 @@ class AsyncTask:
         return self._cancellable and not self._cancellable.is_cancelled()
 
     def completed(self):
-        '''@brief Returns True if the task has completed, False otherwise.'''
+        '''Return True if the task has completed.'''
         return self._task is not None and self._task.get_completed()
 
     def cancel(self):
-        '''@brief cancel async operation'''
+        '''Cancel the in-flight async operation.'''
         if self._alive():
             self._cancellable.cancel()
 
     def kill(self):
-        '''@brief kill and clean up this object'''
+        '''Cancel the operation and release all resources.'''
         self._release_resources()
 
     def run_async(self, *args):
-        '''@brief
-        Method used to initiate an asynchronous operation with the
-        Controller. When the operation completes (or fails) the
-        callback method @_on_operation_complete() will be invoked.
-        '''
+        '''Start the operation asynchronously. On completion or failure,
+        _on_operation_complete() is invoked.'''
         runner = _TaskRunner(self._operation, *self._op_args)
         self._task = runner.communicate(self._cancellable, self._on_operation_complete, *args)
 
     def retry(self, interval_sec, *args):
-        '''@brief Tell this object that the async operation is to be retried
-        in @interval_sec seconds.
-
-        '''
+        '''Schedule the operation to be retried after interval_sec seconds.'''
         if self._retry_tmr is None:
             self._retry_tmr = GTimer()
         self._retry_tmr.set_callback(self._on_retry_timeout, *args)
         self._retry_tmr.start(interval_sec)
 
     def _on_retry_timeout(self, *args):
-        '''@brief
-        When an operation fails, the application has the option to
-        retry at a later time by calling the retry() method. The
-        retry() method starts a timer at the end of which the operation
-        will be executed again. This is the method that is called when
-        the timer expires.
-        '''
+        '''Timer callback that re-runs the operation after a retry delay.'''
         if self._alive():
             self.run_async(*args)
         return GLib.SOURCE_REMOVE
 
     def _on_operation_complete(self, runner, result, *args):
-        '''@brief
-        This callback method is invoked when the operation with the
-        Controller has completed (be it successful or not).
-        '''
+        '''Invoked when the async operation completes (successfully or not).'''
         # The operation might have been cancelled.
         # Only proceed if it hasn't been cancelled.
         if self._operation is None or not self._alive():
@@ -429,7 +384,7 @@ class Deferred:
 
 # ******************************************************************************
 class TcpChecker:
-    '''@brief Verify that a TCP connection can be established with an endpoint'''
+    '''Verify that a TCP connection can be established to an NVMe-TCP endpoint.'''
 
     def __init__(self, traddr, trsvcid, host_iface, verbose, user_cback, *user_data):
         self._user_cback = user_cback
@@ -499,10 +454,6 @@ class TcpChecker:
             self._native_sock = None
 
     def _connect_async_cback(self, source_object, result):
-        '''
-        @param source_object: The Gio.SocketConnection object used to
-        invoke the connect_async() API.
-        '''
         try:
             connected = source_object.connect_finish(result)
         except GLib.Error as err:

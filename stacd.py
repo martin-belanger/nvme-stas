@@ -65,23 +65,21 @@ if __name__ == '__main__':
 
         @property
         def tron(self):
-            '''@brief Get Trace ON property'''
+            '''Return the Trace ON (tron) flag.'''
             return STAC.tron
 
         @tron.setter
         def tron(self, value):
-            '''@brief Set Trace ON property'''
+            '''Set the Trace ON (tron) flag.'''
             STAC.tron = value
 
         @property
         def log_level(self) -> str:
-            '''@brief Get Log Level property'''
+            '''Return the current log level.'''
             return log.level()
 
         def process_info(self) -> str:
-            '''@brief Get status info (for debug)
-            @return A string representation of a json object.
-            '''
+            '''Return a JSON string with the daemon's runtime status info (used for debug).'''
             info = {
                 'tron': STAC.tron,
                 'log-level': self.log_level,
@@ -90,12 +88,12 @@ if __name__ == '__main__':
             return json.dumps(info)
 
         def controller_info(self, transport, traddr, trsvcid, subsysnqn, host_traddr, host_iface, host_nqn) -> str:
-            '''@brief D-Bus method used to return information about a controller'''
+            '''Return a JSON string with information about the specified controller.'''
             controller = STAC.get_controller(transport, traddr, trsvcid, subsysnqn, host_traddr, host_iface, host_nqn)
             return json.dumps(controller.info()) if controller else '{}'
 
         def list_controllers(self, detailed) -> list:
-            '''@brief Return the list of I/O controller IDs'''
+            '''Return the list of I/O controller IDs.'''
             return [
                 controller.details() if detailed else controller.controller_id_dict()
                 for controller in STAC.get_controllers()

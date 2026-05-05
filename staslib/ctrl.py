@@ -22,19 +22,18 @@ DLP_CHANGED = (
 
 
 def get_eflags(dlpe):
-    '''@brief Return eflags field of dlpe'''
+    '''Return the eflags field of a discovery log page entry.'''
     return int(dlpe.get('eflags', 0)) if dlpe else 0
 
 
 def get_ncc(eflags: int):
-    '''@brief Return True if Not Connected to CDC bit is asserted, False otherwise'''
+    '''Return True if the Not Connected to CDC (NCC) bit is set in eflags.'''
     return eflags & nvme.NVMF_DISC_EFLAGS_NCC != 0
 
 
 def dlp_supp_opts_as_string(dlp_supp_opts: int):
-    '''@brief Return the list of options supported by the Get
-    discovery log page command.
-    '''
+    '''Return a list of human-readable option names supported by the
+    Get Discovery Log Page command.'''
     data = {
         nvme.NVMF_LOG_DISC_LID_EXTDLPES: "EXTDLPES",
         nvme.NVMF_LOG_DISC_LID_PLEOS: "PLEOS",
@@ -45,19 +44,19 @@ def dlp_supp_opts_as_string(dlp_supp_opts: int):
 
 # ******************************************************************************
 class Controller(stas.ControllerABC):
-    '''@brief Base class used to manage the connection to a controller.'''
+    '''Base class for managing the connection to an NVMe controller.'''
 
     def __init__(self, tid: trid.TID, service, discovery_ctrl: bool = False):
         sysconf = conf.SysConf()
         self._nvme_options = conf.NvmeOptions()
-        self._root = nvme.GlobalCtx()
+        self._ctx = nvme.GlobalCtx()
         self._host = nvme.Host(
-            self._root, hostnqn=sysconf.hostnqn, hostid=sysconf.hostid, hostsymname=sysconf.hostsymname
+            self._ctx, hostnqn=sysconf.hostnqn, hostid=sysconf.hostid, hostsymname=sysconf.hostsymname
         )
         self._host.dhchap_host_key = sysconf.hostkey if self._nvme_options.dhchap_hostkey_supp else None
         self._udev = udev.UDEV
         self._device = None  # Refers to the nvme device (e.g. /dev/nvme[n])
-        self._ctrl = None  # libnvme's nvme.ctrl object
+        self._ctrl = None  # libnvme's nvme.Ctrl object
         self._connect_op = None
 
         super().__init__(tid, service, discovery_ctrl)
@@ -75,34 +74,34 @@ class Controller(stas.ControllerABC):
         self._ctrl = None
         self._udev = None
         self._host = None
-        self._root = None
+        self._ctx = None
         self._nvme_options = None
 
     @property
     def device(self) -> str:
-        '''@brief return the Linux nvme device id (e.g. nvme3) or empty
-        string if no device is associated with this controller'''
+        '''Return the Linux nvme device name (e.g. "nvme3"), or "nvme?" if
+        no device is associated with this controller yet.'''
         if not self._device and self._ctrl and self._ctrl.name:
             self._device = self._ctrl.name
 
         return self._device or 'nvme?'
 
     def all_ops_completed(self) -> bool:
-        '''@brief Returns True if all operations have completed. False otherwise.'''
+        '''Return True if all pending operations have completed.'''
         return self._connect_op is None or self._connect_op.completed()
 
     def connected(self):
-        '''@brief Return whether a connection is established'''
+        '''Return True if a connection to the controller is currently established.'''
         return self._ctrl and self._ctrl.connected
 
     def controller_id_dict(self) -> dict:
-        '''@brief return the controller ID as a dict.'''
+        '''Return the controller ID as a dict.'''
         cid = super().controller_id_dict()
         cid['device'] = self.device
         return cid
 
     def details(self) -> dict:
-        '''@brief return detailed debug info about this controller'''
+        '''Return detailed debug info about this controller.'''
         details = super().details()
         details.update(
             self._udev.get_attributes(self.device, ('hostid', 'hostnqn', 'model', 'serial', 'dctype', 'cntrltype'))
@@ -111,14 +110,14 @@ class Controller(stas.ControllerABC):
         return details
 
     def info(self) -> dict:
-        '''@brief Get the controller info for this object'''
+        '''Return status info for this controller.'''
         info = super().info()
         if self._connect_op:
             info['connect operation'] = str(self._connect_op.as_dict())
         return info
 
     def cancel(self):
-        '''@brief Used to cancel pending operations.'''
+        '''Cancel all pending operations.'''
         super().cancel()
         if self._connect_op:
             self._connect_op.cancel()
@@ -130,8 +129,8 @@ class Controller(stas.ControllerABC):
 
     def set_level_from_tron(self, tron):
         '''Set log level based on TRON'''
-        if self._root:
-            self._root.log_level("debug" if tron else "err")
+        if self._ctx:
+            self._ctx.log_level("debug" if tron else "err")
 
     def _on_udev_notification(self, udev_obj):
         if not self._alive():
@@ -174,7 +173,7 @@ class Controller(stas.ControllerABC):
         self._retry_connect_tmr.start(self.FAST_CONNECT_RETRY_PERIOD_SEC)
 
     def _get_cfg(self):
-        '''Get all parameters needed to create and connect an nvme.ctrl object.
+        '''Get all parameters needed to create and connect an nvme.Ctrl object.
         Transport ID parameters are included directly. Fabrics config parameters
         may come from the [Global] section or from a "controller" entry in the
         configuration file; a "controller" entry overrides the [Global] section.
@@ -218,7 +217,7 @@ class Controller(stas.ControllerABC):
 
     def _do_connect(self):
         cfg = self._get_cfg()
-        self._ctrl = nvme.Ctrl(self._root, cfg)
+        self._ctrl = nvme.Ctrl(self._ctx, cfg)
 
         self._ctrl.discovery_ctrl = self._discovery_ctrl
 
@@ -262,9 +261,7 @@ class Controller(stas.ControllerABC):
 
     # --------------------------------------------------------------------------
     def _on_connect_success(self, op_obj: gutil.AsyncTask, data):
-        '''@brief Function called when we successfully connect to the
-        Controller.
-        '''
+        '''Called when the connection to the controller is established successfully.'''
         op_obj.kill()
         self._connect_op = None
 
@@ -283,7 +280,7 @@ class Controller(stas.ControllerABC):
         self._udev.register_for_device_events(self._device, self._on_udev_notification)
 
     def _on_connect_fail(self, op_obj: gutil.AsyncTask, err, fail_cnt):
-        '''@brief Function called when we fail to connect to the Controller.'''
+        '''Called when the connection attempt to the controller fails.'''
         op_obj.kill()
         self._connect_op = None
 
@@ -315,18 +312,13 @@ class Controller(stas.ControllerABC):
             self._retry_connect_tmr.start()
 
     def disconnect(self, disconnected_cb, keep_connection):
-        '''@brief Issue an asynchronous disconnect command to a Controller.
-        Once the async command has completed, the callback 'disconnected_cb'
-        will be invoked. If a controller is already disconnected, then the
-        callback will be added to the main loop's next idle slot to be executed
-        ASAP.
+        '''Initiate an asynchronous disconnect. Once complete, disconnected_cb
+        is invoked. If already disconnected, the callback is scheduled on the
+        next main loop idle slot.
 
-        @param disconnected_cb: Callback to be called when disconnect has
-        completed. the callback must have this signature:
-            def cback(controller: Controller, success: bool)
-        @param keep_connection: Whether the underlying connection should remain
-        in the kernel.
-        '''
+        Callback signature: def disconnected_cb(controller: Controller, success: bool)
+
+        If keep_connection is True, the kernel connection is preserved.'''
         logging.debug(
             'Controller.disconnect()            - %s | %s: keep_connection=%s', self.id, self.device, keep_connection
         )
@@ -362,11 +354,9 @@ class Controller(stas.ControllerABC):
 
 # ******************************************************************************
 class Dc(Controller):
-    '''@brief This object establishes a connection to one Discover Controller (DC).
-    It retrieves the discovery log pages and caches them.
-    It also monitors udev events associated with that DC and updates
-    the cached discovery log pages accordingly.
-    '''
+    '''Manages the connection to a single Discovery Controller (DC).
+    Retrieves and caches discovery log pages, and reacts to udev events
+    associated with the DC.'''
 
     GET_LOG_PAGE_RETRY_PERIOD_SEC = 20
     REGISTRATION_RETRY_PERIOD_SEC = 5
@@ -411,7 +401,7 @@ class Dc(Controller):
             self._get_supported_op = None
 
     def all_ops_completed(self) -> bool:
-        '''@brief Returns True if all operations have completed. False otherwise.'''
+        '''Return True if all pending operations have completed.'''
         return (
             super().all_ops_completed()
             and (self._get_log_op is None or self._get_log_op.completed())
@@ -421,15 +411,13 @@ class Dc(Controller):
 
     @property
     def origin(self):
-        '''@brief Return how this controller came into existence. Was it
-        "discovered" through mDNS service discovery (TP8009), was it manually
-        "configured" in stafd.conf, or was it a "referral".
-        '''
+        '''Return how this controller was discovered: "discovered" (mDNS/TP8009),
+        "configured" (stafd.conf), or "referral".'''
         return self._origin
 
     @origin.setter
     def origin(self, value):
-        '''@brief Set the origin of this controller.'''
+        '''Set the origin of this controller.'''
         if value in ('discovered', 'configured', 'referral'):
             self._origin = value
             self._handle_lost_controller()
@@ -437,14 +425,14 @@ class Dc(Controller):
             logging.error('%s | %s - Trying to set invalid origin to %s', self.id, self.device, value)
 
     def reload_hdlr(self):
-        '''@brief This is called when a "reload" signal is received.'''
+        '''Called when a SIGHUP/reload signal is received.'''
         logging.debug('Dc.reload_hdlr()                   - %s | %s', self.id, self.device)
 
         self._handle_lost_controller()
         self._resync_with_controller()
 
     def info(self) -> dict:
-        '''@brief Get the controller info for this object'''
+        '''Return status info for this discovery controller.'''
         timeout = conf.SvcConf().zeroconf_persistence_sec
         unresponsive_time = (
             time.asctime(self._ctrl_unresponsive_time) if self._ctrl_unresponsive_time is not None else '---'
@@ -466,7 +454,7 @@ class Dc(Controller):
         return info
 
     def cancel(self):
-        '''@brief Used to cancel pending operations.'''
+        '''Cancel all pending operations.'''
         super().cancel()
         if self._get_log_op:
             self._get_log_op.cancel()
@@ -476,11 +464,11 @@ class Dc(Controller):
             self._get_supported_op.cancel()
 
     def log_pages(self) -> list:
-        '''@brief Get the cached log pages for this object'''
+        '''Return the cached discovery log pages.'''
         return self._log_pages
 
     def referrals(self) -> list:
-        '''@brief Return the list of referrals'''
+        '''Return the list of referral entries from the cached log pages.'''
         return [page for page in self._log_pages if page['subtype'] == 'referral']
 
     def _is_ddc(self):
@@ -514,9 +502,8 @@ class Dc(Controller):
         self._ctrl_unresponsive_tmr.set_timeout(0)
 
     def is_unresponsive(self):
-        '''@brief For "discovered" DC, return True if DC is unresponsive,
-        False otherwise.
-        '''
+        '''Return True if this discovered DC has been unresponsive long enough
+        to be considered for removal.'''
         return (
             self.origin == 'discovered'
             and not self._serv.is_avahi_reported(self.tid)
@@ -561,9 +548,7 @@ class Dc(Controller):
 
     # --------------------------------------------------------------------------
     def _on_connect_success(self, op_obj: gutil.AsyncTask, data):
-        '''@brief Function called when we successfully connect to the
-        Discovery Controller.
-        '''
+        '''Called when the connection to the Discovery Controller is established.'''
         super()._on_connect_success(op_obj, data)
 
         if not self._alive():
@@ -585,7 +570,7 @@ class Dc(Controller):
             self._post_registration_actions()
 
     def _on_connect_fail(self, op_obj: gutil.AsyncTask, err, fail_cnt):
-        '''@brief Function called when we fail to connect to the Controller.'''
+        '''Called when the connection attempt to the Discovery Controller fails.'''
         super()._on_connect_fail(op_obj, err, fail_cnt)
 
         if self._alive():
@@ -593,14 +578,10 @@ class Dc(Controller):
 
     # --------------------------------------------------------------------------
     def _on_registration_success(self, op_obj: gutil.AsyncTask, data):
-        '''@brief Function called when we successfully register with the
-        Discovery Controller. See self._register_op object
-        for details.
+        '''Called when the registration exchange with the DC completes.
 
-        NOTE: The name _on_registration_success() may be misleading. "success"
-        refers to the fact that a successful exchange was made with the DC.
-        It doesn't mean that the registration itself succeeded.
-        '''
+        Note: "success" here means the exchange completed, not that the
+        registration was accepted. Check data for any error returned by the DC.'''
         if not self._alive():
             logging.debug(
                 'Dc._on_registration_success()      - %s | %s: Received event on dead object.', self.id, self.device
@@ -615,10 +596,7 @@ class Dc(Controller):
         self._post_registration_actions()
 
     def _on_registration_fail(self, op_obj: gutil.AsyncTask, err, fail_cnt):
-        '''@brief Function called when we fail to register with the
-        Discovery Controller. See self._register_op object
-        for details.
-        '''
+        '''Called when the registration exchange with the DC fails (transport error).'''
         if not self._alive():
             logging.debug(
                 'Dc._on_registration_fail()         - %s | %s: Received event on dead object. %s',
@@ -642,14 +620,10 @@ class Dc(Controller):
 
     # --------------------------------------------------------------------------
     def _on_get_supported_success(self, op_obj: gutil.AsyncTask, data):
-        '''@brief Function called when we successfully retrieved the supported
-        log pages from the Discovery Controller. See self._get_supported_op object
-        for details.
+        '''Called when the Get Supported Log Pages exchange with the DC completes.
 
-        NOTE: The name _on_get_supported_success() may be misleading. "success"
-        refers to the fact that a successful exchange was made with the DC.
-        It doesn't mean that the Get Supported Log Page itself succeeded.
-        '''
+        Note: "success" means the exchange completed, not that the operation
+        returned valid data.'''
         if not self._alive():
             logging.debug(
                 'Dc._on_get_supported_success()     - %s | %s: Received event on dead object.', self.id, self.device
@@ -671,10 +645,7 @@ class Dc(Controller):
         self._get_log_op.run_async()
 
     def _on_get_supported_fail(self, op_obj: gutil.AsyncTask, err, fail_cnt):
-        '''@brief Function called when we fail to retrieve the supported log
-        page from the Discovery Controller. See self._get_supported_op object
-        for details.
-        '''
+        '''Called when the Get Supported Log Pages exchange with the DC fails.'''
         if not self._alive():
             logging.debug(
                 'Dc._on_get_supported_fail()        - %s | %s: Received event on dead object. %s',
@@ -703,10 +674,7 @@ class Dc(Controller):
 
     # --------------------------------------------------------------------------
     def _on_get_log_success(self, op_obj: gutil.AsyncTask, data):
-        '''@brief Function called when we successfully retrieve the log pages
-        from the Discovery Controller. See self._get_log_op object
-        for details.
-        '''
+        '''Called when discovery log pages are successfully retrieved from the DC.'''
         if not self._alive():
             logging.debug(
                 'Dc._on_get_log_success()           - %s | %s: Received event on dead object.', self.id, self.device
@@ -747,10 +715,7 @@ class Dc(Controller):
             self._serv.referrals_changed()
 
     def _on_get_log_fail(self, op_obj: gutil.AsyncTask, err, fail_cnt):
-        '''@brief Function called when we fail to retrieve the log pages
-        from the Discovery Controller. See self._get_log_op object
-        for details.
-        '''
+        '''Called when the discovery log page retrieval from the DC fails.'''
         if not self._alive():
             logging.debug(
                 'Dc._on_get_log_fail()              - %s | %s: Received event on dead object. %s',
@@ -775,7 +740,7 @@ class Dc(Controller):
 
 # ******************************************************************************
 class Ioc(Controller):
-    '''@brief This object establishes a connection to one I/O Controller.'''
+    '''Manages the connection to a single I/O Controller.'''
 
     def __init__(self, stac, tid: trid.TID):
         self._dlpe = None
@@ -785,36 +750,37 @@ class Ioc(Controller):
         return self._udev.find_nvme_ioc_device(self.tid)
 
     def _on_aen(self, aen: int):
-        pass
+        pass  # Not applicable for I/O controllers
 
     def _on_nvme_event(self, nvme_event):
-        pass
+        pass  # Not applicable for I/O controllers
 
     def reload_hdlr(self):
-        '''@brief This is called when a "reload" signal is received.'''
+        '''Called when a SIGHUP/reload signal is received.'''
         if not self.connected() and self._retry_connect_tmr.time_remaining() == 0:
             self._try_to_connect_deferred.schedule()
 
     @property
     def eflags(self):
-        '''@brief Return the eflag field of the DLPE'''
+        '''Return the eflags field of the associated Discovery Log Page Entry.'''
         return get_eflags(self._dlpe)
 
     @property
     def ncc(self):
-        '''@brief Return Not Connected to CDC status'''
+        '''Return True if the Not Connected to CDC (NCC) flag is set.'''
         return get_ncc(self.eflags)
 
     def details(self) -> dict:
-        '''@brief return detailed debug info about this controller'''
+        '''Return detailed debug info about this I/O controller.'''
         details = super().details()
         details['dlpe'] = str(self._dlpe)
         details['dlpe.eflags.ncc'] = str(self.ncc)
         return details
 
     def update_dlpe(self, dlpe):
-        '''@brief This method is called when a new DLPE associated
-        with this controller is received.'''
+        '''Update the Discovery Log Page Entry (DLPE) for this controller.
+        If the NCC bit was previously set and has now been cleared, a connection
+        attempt is immediately scheduled.'''
         new_ncc = get_ncc(get_eflags(dlpe))
         old_ncc = self.ncc
         self._dlpe = dlpe
@@ -825,6 +791,6 @@ class Ioc(Controller):
                 self._try_to_connect_deferred.schedule()
 
     def _should_try_to_reconnect(self):
-        '''@brief This is used to determine when it's time to stop trying to connect'''
+        '''Return True if another connection attempt should be made.'''
         max_connect_attempts = conf.SvcConf().connect_attempts_on_ncc if self.ncc else 0
         return max_connect_attempts == 0 or self._connect_attempts < max_connect_attempts
