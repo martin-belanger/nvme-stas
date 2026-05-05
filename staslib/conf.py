@@ -18,7 +18,6 @@ from urllib.parse import urlparse
 from staslib import defs, iputil, nbft, singleton, timeparse
 
 __TOKEN_RE = re.compile(r'\s*;\s*')
-__OPTION_RE = re.compile(r'\s*=\s*')
 
 
 class InvalidOption(Exception):
@@ -26,18 +25,14 @@ class InvalidOption(Exception):
 
 
 def _parse_controller(controller):
-    '''@brief Parse a "controller" entry. Controller entries are strings
-           composed of several configuration parameters delimited by
-           semi-colons. Each configuration parameter is specified as a
-           "key=value" pair.
-    @return A dictionary of key-value pairs.
-    '''
+    '''Parse a "controller" config entry. Entries are semicolon-delimited
+    "key=value" pairs. Returns a dict of the parsed pairs.'''
     options = dict()
     tokens = __TOKEN_RE.split(controller)
     for token in tokens:
         if token:
             try:
-                option, val = __OPTION_RE.split(token)
+                option, val = token.split('=', 1)
                 options[option.strip()] = val.strip()
             except ValueError:
                 pass
@@ -48,7 +43,7 @@ def _parse_controller(controller):
 def _parse_single_val(text):
     if isinstance(text, str):
         return text
-    if not isinstance(text, list) or len(text) == 0:
+    if not isinstance(text, list) or not text:
         return None
 
     return text[-1]
@@ -238,7 +233,7 @@ class SvcConf(metaclass=singleton.Singleton):
         self.reload()
 
     def reload(self):
-        '''@brief Reload the configuration file.'''
+        '''Reload the configuration file.'''
         self._config = self._read_conf_file()
 
     @property
@@ -307,12 +302,12 @@ class SvcConf(metaclass=singleton.Singleton):
 
     @property
     def stypes(self):
-        '''@brief Get the DNS-SD/mDNS service types.'''
+        '''Return the DNS-SD/mDNS service types to browse.'''
         return ['_nvme-disc._tcp', '_nvme-disc._udp'] if self.zeroconf_enabled else list()
 
     @property
     def persistent_connections(self):
-        '''@brief return the "persistent-connections" config parameter'''
+        '''Return the "persistent-connections" config parameter.'''
         section = 'Discovery controller connection management'
         option = 'persistent-connections'
 
@@ -327,9 +322,8 @@ class SvcConf(metaclass=singleton.Singleton):
         return self._defaults.get((section, option), True)
 
     def get_controllers(self):
-        '''@brief Return the list of controllers in the config file.
-        Each controller is in the form of a dictionary as follows.
-        Note that some of the keys are optional.
+        '''Return the list of controllers from the config file.
+        Each controller is a dict with the following keys (some optional):
         {
             'transport':          [TRANSPORT],
             'traddr':             [TRADDR],
@@ -371,9 +365,8 @@ class SvcConf(metaclass=singleton.Singleton):
         return cids
 
     def get_excluded(self):
-        '''@brief Return the list of excluded controllers in the config file.
-        Each excluded controller is in the form of a dictionary
-        as follows. All the keys are optional.
+        '''Return the list of excluded controllers from the config file.
+        Each entry is a dict with optional keys:
         {
             'transport':  [TRANSPORT],
             'traddr':     [TRADDR],
@@ -457,7 +450,7 @@ class SvcConf(metaclass=singleton.Singleton):
         return value
 
     def _read_conf_file(self):
-        '''@brief Read the configuration file if the file exists.'''
+        '''Read and return a ConfigParser for the configuration file (if it exists).'''
         config = configparser.ConfigParser(
             default_section=None,
             allow_no_value=True,
@@ -509,7 +502,7 @@ class SysConf(metaclass=singleton.Singleton):
         self.reload()
 
     def reload(self):
-        '''@brief Reload the configuration file.'''
+        '''Reload the configuration file.'''
         self._config = self._read_conf_file()
 
     @property
@@ -533,11 +526,8 @@ class SysConf(metaclass=singleton.Singleton):
 
     @property
     def hostnqn(self):
-        '''@brief return the host NQN
-        @return: Host NQN
-        @raise: Host NQN is mandatory. The program will terminate if a
-                Host NQN cannot be determined.
-        '''
+        '''Return the host NQN. Exits the program if the NQN cannot be determined,
+        as it is mandatory.'''
         try:
             value = self.__get_value('Host', 'nqn', defs.NVME_HOSTNQN)
         except FileNotFoundError as ex:
@@ -553,11 +543,8 @@ class SysConf(metaclass=singleton.Singleton):
 
     @property
     def hostid(self):
-        '''@brief return the host ID
-        @return: Host ID
-        @raise: Host ID is mandatory. The program will terminate if a
-                Host ID cannot be determined.
-        '''
+        '''Return the host ID. Exits the program if the ID cannot be determined,
+        as it is mandatory.'''
         try:
             value = self.__get_value('Host', 'id', defs.NVME_HOSTID)
         except FileNotFoundError as ex:
@@ -567,10 +554,8 @@ class SysConf(metaclass=singleton.Singleton):
 
     @property
     def hostkey(self):
-        '''@brief return the host key
-        @return: Host key
-        @raise: Host key is optional, but mandatory if authorization will be performed.
-        '''
+        '''Return the host DH-CHAP key, or None if not configured.
+        The key is optional unless in-band authentication is required.'''
         try:
             value = self.__get_value('Host', 'key', defs.NVME_HOSTKEY)
         except FileNotFoundError as ex:
@@ -581,9 +566,7 @@ class SysConf(metaclass=singleton.Singleton):
 
     @property
     def hostsymname(self):
-        '''@brief return the host symbolic name (or None)
-        @return: symbolic name or None
-        '''
+        '''Return the host symbolic name, or None if not configured.'''
         try:
             value = self.__get_value('Host', 'symname')
         except FileNotFoundError as ex:
@@ -593,7 +576,7 @@ class SysConf(metaclass=singleton.Singleton):
         return value
 
     def _read_conf_file(self):
-        '''@brief Read the configuration file if the file exists.'''
+        '''Read and return a ConfigParser for the configuration file (if it exists).'''
         config = configparser.ConfigParser(
             default_section=None, allow_no_value=True, delimiters=('='), interpolation=None, strict=False
         )
@@ -602,25 +585,10 @@ class SysConf(metaclass=singleton.Singleton):
         return config
 
     def __get_value(self, section, option, default_file=None):
-        '''@brief A configuration file consists of sections, each led by a
-               [section] header, followed by key/value entries separated
-               by a equal sign (=). This method retrieves the value
-               associated with the key @option from the section @section.
-               If the value starts with the string "file://", then the value
-               will be retrieved from that file.
-
-        @param section:      Configuration section
-        @param option:       The key to look for
-        @param default_file: A file that contains the default value
-
-        @return: On success, the value associated with the key. On failure,
-                 this method will return None is a default_file is not
-                 specified, or will raise an exception if a file is not
-                 found.
-
-        @raise: This method will raise the FileNotFoundError exception if
-                the value retrieved is a file that does not exist.
-        '''
+        '''Return the value of option in section. If the value starts with
+        "file://", the actual value is read from that file. If the option is
+        not found, returns None (if default_file is None) or reads from
+        default_file. Raises FileNotFoundError if a referenced file does not exist.'''
         try:
             value = self._config.get(section=section, option=option)
             if not value.startswith('file://'):

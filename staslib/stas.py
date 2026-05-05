@@ -33,10 +33,8 @@ except ImportError:
 if _importlib_files is not None:
 
     def load_idl(idl_fname):
-        '''@brief Load a D-Bus Introspection XML file from the staslib package.
-        @param idl_fname: File name of the IDL file (e.g. 'stafd.idl').
-        @return: File contents as a string, or empty string if not found.
-        '''
+        '''Load and return a D-Bus introspection XML file from the staslib package
+        (e.g. 'stafd.idl'). Returns an empty string if the file is not found.'''
         try:
             return _importlib_files('staslib').joinpath(idl_fname).read_text()
         except FileNotFoundError:
@@ -49,10 +47,8 @@ else:
     import pkg_resources
 
     def load_idl(idl_fname):
-        '''@brief Load a D-Bus Introspection XML file from the staslib package.
-        @param idl_fname: File name of the IDL file (e.g. 'stafd.idl').
-        @return: File contents as a string, or empty string if not found.
-        '''
+        '''Load and return a D-Bus introspection XML file from the staslib package
+        (e.g. 'stafd.idl'). Returns an empty string if the file is not found.'''
         try:
             return pkg_resources.resource_string('staslib', idl_fname).decode()
         except (FileNotFoundError, AttributeError):
@@ -63,16 +59,8 @@ else:
 
 # ******************************************************************************
 def check_if_allowed_to_continue():
-    '''@brief Let's perform some basic checks before going too far. There are
-           a few pre-requisites that need to be met before this program
-           is allowed to proceed:
-
-             1) The program needs to have root privileges
-             2) The nvme-tcp kernel module must be loaded
-
-    @return This function will only return if all conditions listed above
-            are met. Otherwise the program exits.
-    '''
+    '''Check that the process has root privileges and that /dev/nvme-fabrics exists.
+    Exits the program immediately if either condition is not met.'''
     # 1) Check root privileges
     if os.geteuid() != 0:
         sys.exit(f'Permission denied. You need root privileges to run {defs.PROG_NAME}.')
@@ -80,14 +68,12 @@ def check_if_allowed_to_continue():
     # 2) Check that nvme-tcp kernel module is running
     if not os.path.exists('/dev/nvme-fabrics'):
         # There's no point going any further if the kernel module hasn't been loaded
-        sys.exit('Fatal error: missing nvme-tcp kernel module')
+        sys.exit('Fatal error: /dev/nvme-fabrics not found. Check that the NVMe-oF kernel modules are loaded.')
 
 
 # ******************************************************************************
 def remove_invalid_addresses(controllers: list):
-    '''@brief Remove controllers with invalid addresses from the list of controllers.
-    @param controllers: List of TIDs
-    '''
+    '''Return a filtered copy of controllers with invalid or disabled-family IP addresses removed.'''
     service_conf = conf.SvcConf()
     valid_controllers = list()
     for controller in controllers:
@@ -123,7 +109,7 @@ def remove_invalid_addresses(controllers: list):
 
 # ******************************************************************************
 def tid_from_dlpe(dlpe, host_traddr, host_iface, host_nqn):
-    '''@brief Take a Discovery Log Page Entry and return a Controller ID as a dict.'''
+    '''Convert a Discovery Log Page Entry (DLPE) to a controller ID dict.'''
     cid = {
         'transport': dlpe['trtype'],
         'traddr': dlpe['traddr'],
@@ -139,7 +125,7 @@ def tid_from_dlpe(dlpe, host_traddr, host_iface, host_nqn):
 
 # ******************************************************************************
 def _excluded(excluded_ctrl_list, controller: dict):
-    '''@brief Check if @controller is excluded.'''
+    '''Return True if controller matches any entry in excluded_ctrl_list.'''
     for excluded_ctrl in excluded_ctrl_list:
         test_results = [val == controller.get(key, None) for key, val in excluded_ctrl.items()]
         if all(test_results):
@@ -149,9 +135,7 @@ def _excluded(excluded_ctrl_list, controller: dict):
 
 # ******************************************************************************
 def remove_excluded(controllers: list):
-    '''@brief Remove excluded controllers from the list of controllers.
-    @param controllers: List of TIDs
-    '''
+    '''Return a filtered copy of controllers with excluded entries removed.'''
     excluded_ctrl_list = conf.SvcConf().get_excluded()
     if excluded_ctrl_list:
         logging.debug('remove_excluded()                  - excluded_ctrl_list   = %s', excluded_ctrl_list)
@@ -163,7 +147,7 @@ def remove_excluded(controllers: list):
 
 # ******************************************************************************
 class ControllerABC(abc.ABC):
-    '''@brief Base class used to manage the connection to a controller.'''
+    '''Abstract base class for managing the connection to an NVMe controller.'''
 
     CONNECT_RETRY_PERIOD_SEC = 60
     FAST_CONNECT_RETRY_PERIOD_SEC = 3
@@ -198,37 +182,37 @@ class ControllerABC(abc.ABC):
 
     @property
     def id(self) -> str:
-        '''@brief Return the Transport ID as a printable string'''
+        '''Return the Transport ID as a printable string.'''
         return str(self.tid)
 
     @property
     def tid(self):
-        '''@brief Return the Transport ID object'''
+        '''Return the Transport ID object.'''
         return self._tid
 
     def controller_id_dict(self) -> dict:
-        '''@brief return the controller ID as a dict.'''
+        '''Return the controller ID as a dict.'''
         return {k: str(v) for k, v in self.tid.as_dict().items()}
 
     def details(self) -> dict:
-        '''@brief return detailed debug info about this controller'''
+        '''Return detailed debug info about this controller.'''
         return self.info()
 
     def info(self) -> dict:
-        '''@brief Get the controller info for this object'''
+        '''Return the controller info for this object.'''
         info = self.controller_id_dict()
         info['connect attempts'] = str(self._connect_attempts)
         info['retry connect timer'] = str(self._retry_connect_tmr)
         return info
 
     def cancel(self):
-        '''@brief Used to cancel pending operations.'''
+        '''Cancel pending operations.'''
         if self._alive():
             logging.debug('ControllerABC.cancel()             - %s', self.id)
             self._cancellable.cancel()
 
     def kill(self):
-        '''@brief Used to release all resources associated with this object.'''
+        '''Release all resources associated with this object.'''
         logging.debug('ControllerABC.kill()               - %s', self.id)
         self._release_resources()
 
@@ -292,29 +276,27 @@ class ControllerABC(abc.ABC):
 
     @abc.abstractmethod
     def all_ops_completed(self) -> bool:
-        '''@brief Returns True if all operations have completed. False otherwise.'''
+        '''Return True if all operations have completed, False otherwise.'''
 
     @abc.abstractmethod
     def connected(self):
-        '''@brief Return whether a connection is established'''
+        '''Return whether a connection is established.'''
 
     @abc.abstractmethod
     def disconnect(self, disconnected_cb, keep_connection):
-        '''@brief Issue an asynchronous disconnect command to a Controller.
-        Once the async command has completed, the callback 'disconnected_cb'
-        will be invoked. If a controller is already disconnected, then the
-        callback will be added to the main loop's next idle slot to be executed
-        ASAP.
-        '''
+        '''Issue an asynchronous disconnect command to this controller.
+        Once the command completes, disconnected_cb is invoked. If the
+        controller is already disconnected, the callback is scheduled on the
+        next idle slot of the main loop.'''
 
     @abc.abstractmethod
     def reload_hdlr(self):
-        '''@brief This is called when a "reload" signal is received.'''
+        '''Called when a "reload" signal is received.'''
 
 
 # ******************************************************************************
 class ServiceABC(abc.ABC):
-    '''@brief Base class used to manage a STorage Appliance Service'''
+    '''Abstract base class for the stafd and stacd daemon services.'''
 
     CONF_STABILITY_SOAK_TIME_SEC = 1.5
 
@@ -380,28 +362,28 @@ class ServiceABC(abc.ABC):
 
     @property
     def tron(self):
-        '''@brief Get Trace ON property'''
+        '''Return the Trace ON (tron) flag.'''
         return self._tron
 
     @tron.setter
     def tron(self, value):
-        '''@brief Set Trace ON property'''
+        '''Set the Trace ON (tron) flag and propagate the log level to all controllers.'''
         self._tron = value
         log.set_level_from_tron(self._tron)
         for controller in self._controllers.values():
             controller.set_level_from_tron(self._tron)
 
     def run(self):
-        '''@brief Start the main loop execution'''
+        '''Block until a termination signal is received, then return.'''
         try:
             self._loop.run()
-        except Exception as ex:
-            logging.critical('exception: %s', ex)
+        except Exception:
+            logging.exception('self._loop.run() failed!')
 
         self._loop = None
 
     def info(self) -> dict:
-        '''@brief Get the status info for this object (used for debug)'''
+        '''Return the status info for this object (used for debug).'''
         nvme_options = conf.NvmeOptions()
         info = conf.SysConf().as_dict()
         info['last known config file'] = self._lkc_file
@@ -411,7 +393,7 @@ class ServiceABC(abc.ABC):
         return info
 
     def get_controllers(self) -> dict:
-        '''@brief return the list of controller objects'''
+        '''Return the list of controller objects.'''
         return self._controllers.values()
 
     def get_controller(
@@ -424,7 +406,7 @@ class ServiceABC(abc.ABC):
         host_iface: str,
         host_nqn: str,
     ):
-        '''@brief get the specified controller object from the list of controllers'''
+        '''Return the specified controller object, or None if not found.'''
         cid = {
             'transport': transport,
             'traddr': traddr,
@@ -456,9 +438,8 @@ class ServiceABC(abc.ABC):
             logging.debug('ServiceABC._remove_ctrl_from_dict()- already removed')
 
     def remove_controller(self, controller, success):
-        '''@brief remove the specified controller object from the list of controllers
-        @param controller: the controller object
-        @param success: whether the disconnect was successful'''
+        '''Remove the specified controller object from the list of controllers.
+        success indicates whether the preceding disconnect completed successfully.'''
         logging.debug('ServiceABC.remove_controller()')
         if isinstance(controller, ControllerABC):
             self._remove_ctrl_from_dict(controller)
@@ -500,8 +481,6 @@ class ServiceABC(abc.ABC):
         '''Callback invoked after a controller is disconnected.
         THIS IS USED DURING PROCESS SHUTDOWN TO WAIT FOR ALL CONTROLLERS TO BE
         DISCONNECTED BEFORE EXITING THE PROGRAM. ONLY CALL ON SHUTDOWN!
-        @param controller: the controller object
-        @param success: whether the disconnect operation was successful
         '''
         logging.debug(
             'ServiceABC._on_final_disconnect()  - %s | %s: disconnect %s',
@@ -529,7 +508,7 @@ class ServiceABC(abc.ABC):
         return GLib.SOURCE_REMOVE
 
     def _config_ctrls(self):
-        '''@brief Start controllers configuration.'''
+        '''Start controllers configuration.'''
         # The configuration file may contain controllers and/or excluded
         # controllers with traddr specified as hostname instead of IP address.
         # Because of this, we need to remove those excluded elements before
@@ -544,7 +523,7 @@ class ServiceABC(abc.ABC):
         self._resolver.resolve_ctrl_async(self._cancellable, configured_controllers, self._config_ctrls_finish)
 
     def _read_lkc(self):
-        '''@brief Read Last Known Config from file.
+        '''Read the last known config from file.
 
         Security note: pickle.load() is used here. This is safe because the
         LKC file is written exclusively by this process to a path under
@@ -558,8 +537,7 @@ class ServiceABC(abc.ABC):
             return None
 
     def _write_lkc(self, config):
-        '''@brief Write Last Known Config to file, and if config is empty
-        make sure the file is emptied.'''
+        '''Write the last known config to file. If config is empty, the file is truncated.'''
         try:
             # Note that if config is empty we still
             # want to open/close the file to empty it.
@@ -575,28 +553,16 @@ class ServiceABC(abc.ABC):
 
     @abc.abstractmethod
     def _keep_connections_on_exit(self):
-        '''@brief Determine whether connections should remain when the
-        process exits.
-
-        NOTE) This is the base class method used to define the interface.
-        It must be overloaded by a child class.
-        '''
+        '''Return True if NVMe-oF connections should persist after the daemon exits.'''
 
     @abc.abstractmethod
     def _config_ctrls_finish(self, configured_ctrl_list):
-        '''@brief Finish controllers configuration after hostnames (if any)
-        have been resolved.
+        '''Complete controller configuration after hostname resolution.
 
-        Configuring controllers must be done asynchronously in 2 steps.
-        In the first step, host names get resolved to find their IP addresses.
-        Name resolution can take a while, especially when an external name
-        resolution server is used. Once that step completed, the callback
-        method _config_ctrls_finish() (i.e. this method), gets invoked to
-        complete the controller configuration.
-
-        NOTE) This is the base class method used to define the interface.
-        It must be overloaded by a child class.
-        '''
+        Controller configuration is split into two async steps: first, any
+        hostnames in the config are resolved to IP addresses (which can be
+        slow when an external DNS server is involved); then this callback is
+        invoked to apply the resolved list and reconcile running controllers.'''
 
     @abc.abstractmethod
     def _load_last_known_config(self):

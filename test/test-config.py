@@ -275,10 +275,10 @@ class TestParseController(unittest.TestCase):
         result = conf._parse_controller('noequalsign')
         self.assertEqual(result, {})
 
-    def test_token_with_extra_equals_is_silently_skipped(self):
-        # 'key=val=extra' splits into 3 parts → ValueError → silently ignored
+    def test_token_with_extra_equals_preserves_value(self):
+        # split('=', maxsplit=1) keeps extra '=' in value (needed for base64-padded DH-CHAP secrets)
         result = conf._parse_controller('key=val=extra')
-        self.assertEqual(result, {})
+        self.assertEqual(result, {'key': 'val=extra'})
 
     def test_mixed_valid_and_malformed_tokens(self):
         result = conf._parse_controller('transport=tcp;noequalsign;traddr=10.10.10.10')

@@ -20,7 +20,7 @@ update-subprojects:
 	meson subprojects update
 
 ${BUILD-DIR}:
-	BUILD_DIR=${BUILD-DIR} ./configure ${XTRA-MESON-OPTS}
+	meson setup ${BUILD-DIR} ${XTRA-MESON-OPTS} || meson setup ${BUILD-DIR} --reconfigure ${XTRA-MESON-OPTS}
 	@echo "Configuration located in: $@"
 	@echo "-------------------------------------------------------"
 

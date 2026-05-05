@@ -22,9 +22,8 @@ from staslib import defs, conf, gutil, iputil
 
 
 def _txt2dict(txt: list):
-    '''@param txt: A list of list of integers. The integers are the ASCII value
-    of printable text characters.
-    '''
+    '''Convert Avahi TXT record to a dict. txt is a list of lists of ASCII
+    integer values representing key=value pairs.'''
     the_dict = dict()
     for list_of_chars in txt:
         try:
@@ -241,9 +240,8 @@ class Service:
 
 # ******************************************************************************
 class Avahi:
-    '''@brief Avahi Server proxy. Set up the D-Bus connection to the Avahi
-    daemon and register to be notified when services of a certain
-    type (stype) are discovered or lost.
+    '''Avahi D-Bus proxy. Connects to the Avahi daemon and registers to be
+    notified when services of a given type (stype) are discovered or lost.
     '''
 
     DBUS_NAME = 'org.freedesktop.Avahi'
@@ -342,7 +340,7 @@ class Avahi:
         self._avahi_watcher.connect_once_available()
 
     def kill(self):
-        '''@brief Clean up object'''
+        '''Release all resources and disconnect from Avahi.'''
         logging.debug('Avahi.kill()')
 
         self._kick_avahi_tmr.kill()
@@ -366,7 +364,7 @@ class Avahi:
         self._sysbus = None
 
     def info(self) -> dict:
-        '''@brief return debug info about this object'''
+        '''Return debug info about this object.'''
         info = {
             'avahi wake up timer': str(self._kick_avahi_tmr),
             'service types': list(self._stypes),
@@ -376,8 +374,7 @@ class Avahi:
         return info
 
     def get_controllers(self) -> list:
-        '''@brief Get the discovery controllers as a list of dict()
-        as follows:
+        '''Return the reachable discovery controllers as a list of dicts:
         [
             {
                 'transport': tcp,
@@ -403,18 +400,14 @@ class Avahi:
         return [service.data for service in self._services.values() if service.reachable]
 
     def config_stypes(self, stypes: list):
-        '''@brief Configure the service types that we want to discover.
-        @param stypes: A list of services types, e.g. ['_nvme-disc._tcp']
-        '''
+        '''Configure the service types to discover, e.g. ['_nvme-disc._tcp'].'''
         self._stypes = set(stypes)
         success = self._configure_browsers()
         if not success:
             self._kick_avahi_tmr.start()
 
     def kick_start(self):
-        '''@brief We use this to kick start the Avahi
-        daemon (i.e. socket activation).
-        '''
+        '''Trigger Avahi daemon via socket activation.'''
         self._kick_avahi_tmr.clear()
 
     def _remove_service(self, service_to_rm: typing.Tuple[int, int, str, str, str]):
@@ -449,7 +442,7 @@ class Avahi:
         return GLib.SOURCE_REMOVE
 
     def _avahi_available(self, _avahi_watcher):
-        '''@brief Hook up DBus signal handlers for signals from stafd.'''
+        '''Avahi daemon became available; configure service browsers.'''
         logging.info('avahi-daemon service available, zeroconf supported.')
         success = self._configure_browsers()
         if not success:

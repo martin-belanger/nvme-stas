@@ -37,9 +37,8 @@ def read_from_file(fname, size):
 
 
 def get_machine_app_specific(app_id):
-    '''@brief Get a machine ID specific to an application. We use the
-    value retrieved from /etc/machine-id. The documentation states that
-    /etc/machine-id:
+    '''Get a machine ID specific to an application, derived from /etc/machine-id.
+    The documentation states that /etc/machine-id:
         "should be considered "confidential", and must not be exposed in
          untrusted environments, in particular on the network. If a stable
          unique identifier that is tied to the machine is needed for some
@@ -50,10 +49,8 @@ def get_machine_app_specific(app_id):
          constant way from the machine ID but there will be no way to
          retrieve the original machine ID from the application-specific one"
 
-    @note systemd's C function sd_id128_get_machine_app_specific() was the
-          inspiration for this code.
-
-    @ref https://www.freedesktop.org/software/systemd/man/machine-id.html
+    Note: inspired by systemd's sd_id128_get_machine_app_specific(). See:
+    https://www.freedesktop.org/software/systemd/man/machine-id.html
     '''
     if not hmac:
         return None
@@ -72,7 +69,7 @@ def get_machine_app_specific(app_id):
 
 
 def get_uuid_from_system():
-    '''@brief Try to find system UUID in the following order:
+    '''Try to find system UUID in the following order:
     1) /etc/machine-id
     2) /sys/class/dmi/id/product_uuid
     3) /proc/device-tree/ibm,partition-uuid
@@ -96,14 +93,9 @@ def get_uuid_from_system():
 
 
 def save(section, option, string, conf_file, fname):
-    '''@brief Save configuration
-
-    @param section: section in @conf_file where @option will be added
-    @param option: option to be added under @section in @conf_file
-    @param string: Text to be saved to @fname
-    @param conf_file: Configuration file name
-    @param fname: Optional file where @string will be saved
-    '''
+    '''Write string to fname (if given) and record option under section in conf_file.
+    If fname is given, the conf_file entry stores a "file://" reference instead of the value directly.
+    Passing string=None removes the option from conf_file.'''
     if fname and string is not None:
         with open(fname, 'w') as f:
             print(string, file=f)
@@ -133,24 +125,24 @@ def save(section, option, string, conf_file, fname):
 
 
 def hostnqn(args):
-    '''@brief Configure the host NQN'''
+    '''Generate and save the host NQN.'''
     uuid_str = get_uuid_from_system() or str(uuid.uuid4())
     uuid_str = f'nqn.2014-08.org.nvmexpress:uuid:{uuid_str}'
     save('Host', 'nqn', uuid_str, args.conf_file, args.file)
 
 
 def hostid(args):
-    '''@brief Configure the host ID'''
+    '''Generate and save the host ID.'''
     save('Host', 'id', str(uuid.uuid4()), args.conf_file, args.file)
 
 
 def set_symname(args):
-    '''@brief Define the host Symbolic Name'''
+    '''Save the host symbolic name.'''
     save('Host', 'symname', args.symname, args.conf_file, args.file)
 
 
 def clr_symname(args):
-    '''@brief Clear the host symbolic name'''
+    '''Remove the host symbolic name from the configuration.'''
     save('Host', 'symname', None, args.conf_file, None)
 
 
