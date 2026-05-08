@@ -307,6 +307,10 @@ class AsyncTask:
         '''Return True if the task has completed.'''
         return self._task is not None and self._task.get_completed()
 
+    def running(self):
+        '''Return True if the task has been started but not yet completed.'''
+        return self._task is not None and not self._task.get_completed()
+
     def cancel(self):
         '''Cancel the in-flight async operation.'''
         if self._alive():
@@ -318,7 +322,9 @@ class AsyncTask:
 
     def run_async(self, *args):
         '''Start the operation asynchronously. On completion or failure,
-        _on_operation_complete() is invoked.'''
+        _on_operation_complete() is invoked. No-op if already running.'''
+        if self.running():
+            return
         runner = _TaskRunner(self._operation, *self._op_args)
         self._task = runner.communicate(self._cancellable, self._on_operation_complete, *args)
 

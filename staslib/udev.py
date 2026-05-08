@@ -262,6 +262,8 @@ class Udev:
             # Need to convert to ipaddress objects to properly
             # handle all variations of IPv6 addresses.
             tid_traddr = iputil.get_ipaddress_obj(tid.traddr, ipv4_mapped_convert=True)
+            if tid_traddr is None:
+                return False
             cid_traddr = iputil.get_ipaddress_obj(cid['traddr'], ipv4_mapped_convert=True)
         else:
             # For FC and loop we can do a case-insensitive comparison
@@ -485,5 +487,7 @@ UDEV = Udev()  # Singleton
 def shutdown():
     '''Destroy the UDEV singleton'''
     global UDEV
+    if 'UDEV' not in globals():
+        return
     UDEV.release_resources()
     del UDEV
