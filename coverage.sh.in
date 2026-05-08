@@ -420,8 +420,7 @@ log_file_contents 0 "${stafd_conf_fname}"
 printf "\n"
 
 reload_cfg "stafd"
-sleep 5
-
+sleep 3
 
 log "Change stacd config [1]:"
 cat > "${stacd_conf_fname}" <<'EOF'
@@ -605,6 +604,10 @@ printf "\n"
 
 reload_cfg "stafd"
 sleep 2
+
+# Force reading stacd's last know config
+sd_restart "stacd"
+sleep 3
 
 #*******************************************************************************
 # Stop Avahi Publisher
