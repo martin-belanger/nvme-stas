@@ -11,6 +11,7 @@ Dc (Discovery Controller) and Ioc (I/O Controller) objects are derived.'''
 
 import time
 import logging
+from typing import Optional
 from gi.repository import GLib
 from libnvme import nvme
 from staslib import conf, gutil, trid, udev, stas
@@ -247,7 +248,11 @@ class Controller(stas.ControllerABC):
                 'Controller._do_connect()           - %s Found existing control device: %s', self.id, udev_obj.sys_name
             )
             self._connect_op = gutil.AsyncTask(
-                self._on_connect_success, self._on_connect_fail, self._ctrl.init, self._host, int(udev_obj.sys_number)
+                self._on_connect_success,
+                self._on_connect_fail,
+                self._ctrl.load_from_device,
+                self._host,
+                int(udev_obj.sys_number),
             )
         else:
             logging.debug(
@@ -558,7 +563,7 @@ class Dc(Controller):
         self._ctrl_unresponsive_tmr.stop()
         self._ctrl_unresponsive_tmr.set_timeout(0)
 
-        if self._ctrl.is_registration_supported():
+        if self._ctrl.registration_supported:
             self._register_op = gutil.AsyncTask(
                 self._on_registration_success,
                 self._on_registration_fail,
@@ -619,7 +624,7 @@ class Dc(Controller):
         op_obj.retry(Dc.REGISTRATION_RETRY_PERIOD_SEC)
 
     # --------------------------------------------------------------------------
-    def _on_get_supported_success(self, op_obj: gutil.AsyncTask, data):
+    def _on_get_supported_success(self, op_obj: gutil.AsyncTask, data: Optional[list]):
         '''Called when the Get Supported Log Pages exchange with the DC completes.
 
         Note: "success" means the exchange completed, not that the operation
@@ -630,7 +635,10 @@ class Dc(Controller):
             )
             return
 
-        dlp_supp_opts = data[nvme.NVME_LOG_LID_DISCOVERY] >> 16
+        try:
+            dlp_supp_opts = data[nvme.NVME_LOG_LID_DISCOVERY] >> 16
+        except (TypeError, IndexError):
+            dlp_supp_opts = 0
 
         logging.debug(
             'Dc._on_get_supported_success()     - %s | %s: supported options = 0x%04X = %s',

@@ -83,8 +83,8 @@ class CtrlTerminator:
 
     def pending_disposal(self, tid):
         '''Return True if tid is pending disposal.'''
-        for controller in self._controllers:
-            if controller.tid == tid:
+        for _, _, _, controller_tid in self._controllers:
+            if controller_tid == tid:
                 return True
         return False
 
@@ -810,8 +810,7 @@ class Staf(Service):
         configuration where some controllers are configured through nvme-stas
         and others through nvme-cli. This is not an optimal configuration. It
         would be better if everything was configured through nvme-stas, however
-        support for hybrid configuration was requested by users (actually only
-        one user requested this).'''
+        support for hybrid configuration was requested by users.'''
 
         # Looking for 'change' events only
         if udev_obj.action != 'change':

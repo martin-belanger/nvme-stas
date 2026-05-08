@@ -112,7 +112,7 @@ class SvcConf(metaclass=singleton.Singleton):
             'tron': {
                 'convert': _to_bool,
                 'default': False,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('false', 'true'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('false', 'true'),
             },
             'kato': {
                 'convert': _to_int,
@@ -120,7 +120,7 @@ class SvcConf(metaclass=singleton.Singleton):
             'pleo': {
                 'convert': functools.partial(_to_bool, positive='enabled'),
                 'default': True,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('disabled', 'enabled'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('disabled', 'enabled'),
             },
             'ip-family': {
                 'convert': _to_ip_family,
@@ -134,17 +134,17 @@ class SvcConf(metaclass=singleton.Singleton):
             'hdr-digest': {
                 'convert': _to_bool,
                 'default': False,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('false', 'true'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('false', 'true'),
             },
             'data-digest': {
                 'convert': _to_bool,
                 'default': False,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('false', 'true'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('false', 'true'),
             },
             'ignore-iface': {
                 'convert': _to_bool,
                 'default': False,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('false', 'true'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('false', 'true'),
             },
             'nr-io-queues': {
                 'convert': _to_int,
@@ -154,7 +154,7 @@ class SvcConf(metaclass=singleton.Singleton):
             },
             'disable-sqflow': {
                 'convert': _to_bool,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('false', 'true'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('false', 'true'),
             },
             'nr-poll-queues': {
                 'convert': _to_int,
@@ -170,14 +170,14 @@ class SvcConf(metaclass=singleton.Singleton):
             'zeroconf': {
                 'convert': functools.partial(_to_bool, positive='enabled'),
                 'default': True,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('disabled', 'enabled'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('disabled', 'enabled'),
             },
         },
         'Discovery controller connection management': {
             'persistent-connections': {
                 'convert': _to_bool,
                 'default': True,
-                'txt-chk': lambda text: _parse_single_val(text).lower() in ('false', 'true'),
+                'txt-chk': lambda text: str(_parse_single_val(text)).lower() in ('false', 'true'),
             },
             'zeroconf-connections-persistence': {
                 'convert': lambda text: timeparse.timeparse(_parse_single_val(text)),
@@ -767,7 +767,7 @@ class NbftConf(metaclass=singleton.Singleton):
         '''Convert a URI of the form "nvme+tcp://100.71.103.50:8009/" to a Controller ID'''
         obj = urlparse(uri)
         return {
-            'transport': obj.scheme.split('+')[1],
+            'transport': obj.scheme.partition('+')[2],
             'traddr': obj.hostname,
-            'trsvcid': str(obj.port),
+            'trsvcid': str(obj.port) if obj.port is not None else '',
         }

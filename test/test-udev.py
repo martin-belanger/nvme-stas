@@ -773,6 +773,41 @@ class Test(unittest.TestCase):
             )
             self.assertEqual(True, udev.UDEV._cid_matches_tid(tid, cid, ifaces), msg='Test Case RDMA-3 failed')
 
+    def test_get_attributes_missing_attr(self):
+        # /dev/null exists but has no NVMe-specific attributes; asstring() raises
+        # for each requested attr → the except branch at line 114 is hit for both.
+        attrs = udev.UDEV.get_attributes('null', ('hostnqn', 'serial'))
+        self.assertEqual(attrs, {'hostnqn': '', 'serial': ''})
+
+    def test_cid_matches_tcp_tid_legacy_no_iface_info(self):
+        # tid wants a specific host_iface; cid has neither host-traddr nor host-iface.
+        # Both are unknown → optimistic match, hits the [2] debug log at line 216.
+        ifaces = iputil.net_if_addrs()
+        cid = {
+            'transport': 'tcp',
+            'traddr': traddr(4),
+            'trsvcid': '8009',
+            'subsysnqn': 'hello',
+            'host-traddr': '',
+            'host-iface': '',
+            'src-addr': '',
+            'host-nqn': '',
+        }
+        tid = trid.TID(
+            {
+                'transport': 'tcp',
+                'traddr': traddr(4),
+                'trsvcid': '8009',
+                'subsysnqn': 'hello',
+                'host-iface': 'eth0',
+                'host-nqn': '',
+            }
+        )
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG') as captured:
+            result = udev.UDEV._cid_matches_tcp_tid_legacy(tid, cid, ifaces)
+        self.assertTrue(result)
+        self.assertTrue(any('[2]' in r.getMessage() for r in captured.records))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,8 +1,17 @@
 #!/usr/bin/python3
 import logging
 import unittest
+from libnvme import nvme
 from staslib import conf, ctrl, timeparse, trid
 from pyfakefs.fake_filesystem_unittest import TestCase
+
+
+class MockOp:
+    def kill(self):
+        pass
+
+    def retry(self, delay):
+        pass
 
 
 class TestController(ctrl.Controller):
@@ -27,6 +36,7 @@ class TestDc(ctrl.Dc):
         class Ctrl:
             def __init__(this):
                 this.name = 'nvme666'
+                this.dctype = 'none'
 
             @property
             def connected(this):
@@ -34,6 +44,9 @@ class TestDc(ctrl.Dc):
 
             def disconnect(this):
                 pass
+
+            def discover(this, lsp=0):
+                return []
 
         self._ctrl = Ctrl()
 
@@ -49,6 +62,9 @@ class TestDc(ctrl.Dc):
     def reload_hdlr(self):
         pass
 
+    def _post_registration_actions(self):
+        pass  # no-op: avoids starting async ops inside registration callback tests
+
     def set_connected(self, value):
         self._connected = value
 
@@ -63,9 +79,26 @@ class TestStaf:
     def controller_unresponsive(self, tid):
         pass
 
+    def log_pages_changed(self, controller, device):
+        pass
+
+    def referrals_changed(self):
+        pass
+
     @property
     def tron(self):
         return True
+
+
+class TestStac:
+    @property
+    def tron(self):
+        return True
+
+
+class TestIoc(ctrl.Ioc):
+    def _find_existing_connection(self):
+        return None
 
 
 stafd_conf_1 = '''
@@ -320,6 +353,85 @@ class Test(TestCase):
         self.assertEqual(len(captured.records), 1)
         self.assertIn('keep_connection=False', captured.records[0].getMessage())
         self.assertNotIn('Disconnect initiated', captured.records[0].getMessage())
+
+
+    def test_dc_registration_callbacks(self):
+        op = MockOp()
+        dc = TestDc(TestStaf(), tid=self.NVME_TID)
+
+        # _on_registration_success: data=None → DC accepted, logs debug
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_registration_success(op, None)
+
+        # _on_registration_success: data='error' → DC returned an error, logs warning
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_registration_success(op, 'some DC error')
+
+        class FakeErr:
+            domain = 'nvme'
+            message = 'timeout'
+
+            def __str__(self):
+                return 'timeout'
+
+        # _on_registration_fail: fail_cnt=1 → logs error + schedules retry
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_registration_fail(op, FakeErr(), 1)
+
+        # _on_registration_fail: fail_cnt=2 → throttled (no extra error log)
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_registration_fail(op, FakeErr(), 2)
+
+    def test_dc_log_page_callbacks(self):
+        op = MockOp()
+        dc = TestDc(TestStaf(), tid=self.NVME_TID)
+
+        # _on_get_supported_success: creates AsyncTask with dc._ctrl.discover and runs it
+        data = {nvme.NVME_LOG_LID_DISCOVERY: nvme.NVMF_LOG_DISC_LID_PLEOS << 16}
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_get_supported_success(op, data)
+        self.assertIsNotNone(dc._get_log_op)
+
+        # _on_get_log_fail: fail_cnt=1 → logs error + schedules retry
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_get_log_fail(op, Exception('timeout'), 1)
+
+        # _on_get_log_fail: fail_cnt=2 → throttled
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_get_log_fail(op, Exception('timeout'), 2)
+
+    def test_disconn_callbacks(self):
+        op = MockOp()
+        dc = TestDc(TestStaf(), tid=self.NVME_TID)
+        results = []
+        cb = lambda controller, ok: results.append(ok)
+
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_disconn_success(op, None, cb)
+
+        with self.assertLogs(logger=logging.getLogger(), level='DEBUG'):
+            dc._on_disconn_fail(op, Exception('err'), 1, cb)
+
+    def test_ioc_remaining(self):
+        ioc = TestIoc(TestStac(), self.NVME_TID)
+
+        # reload_hdlr: not connected + timer not running → schedules deferred connect
+        ioc.reload_hdlr()
+
+        # update_dlpe: NCC bit was clear, stays clear → no reconnect scheduled
+        ioc._dlpe = {'eflags': '0'}
+        ioc.update_dlpe({'eflags': '0'})
+        self.assertFalse(ioc.ncc)
+
+        # update_dlpe: NCC was set, now cleared → connect attempt reset and scheduled
+        ioc._dlpe = {'eflags': '4'}
+        self.assertTrue(ioc.ncc)
+        ioc.update_dlpe({'eflags': '0'})
+        self.assertFalse(ioc.ncc)
+        self.assertEqual(ioc._connect_attempts, 0)
+
+        # _should_try_to_reconnect: ncc=False → max_connect_attempts=0 → always True
+        self.assertTrue(ioc._should_try_to_reconnect())
 
 
 if __name__ == '__main__':

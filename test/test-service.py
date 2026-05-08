@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 import os
+import logging
 import unittest
-from staslib import service
+from staslib import ctrl, log, service
 from pyfakefs.fake_filesystem_unittest import TestCase
 
 
@@ -66,6 +67,107 @@ class Test(TestCase):
             None,
         )
         self.assertEqual(srv.remove_controller(controller=None, success=True), None)
+
+
+class FakeUdevObj:
+    sys_name = 'nvme0'
+
+    def __init__(self, nvme_aen=None, nvme_event=None):
+        self._aen = nvme_aen
+        self._event = nvme_event
+
+    def get(self, key):
+        if key == 'NVME_AEN':
+            return self._aen
+        if key == 'NVME_EVENT':
+            return self._event
+        return None
+
+
+class TestHelpers(unittest.TestCase):
+    '''Unit tests for module-level helper functions in service.py'''
+
+    def setUp(self):
+        log.init(syslog=False)
+
+    def test_is_dlp_changed_aen_no_aen(self):
+        self.assertFalse(service._is_dlp_changed_aen(FakeUdevObj()))
+
+    def test_is_dlp_changed_aen_not_string(self):
+        obj = FakeUdevObj()
+        obj._aen = 42  # integer, not string
+        self.assertFalse(service._is_dlp_changed_aen(obj))
+
+    def test_is_dlp_changed_aen_wrong_value(self):
+        # AEN present as string but wrong value → covers lines 535-537
+        self.assertFalse(service._is_dlp_changed_aen(FakeUdevObj(nvme_aen='0x000000')))
+
+    def test_is_dlp_changed_aen_true(self):
+        # AEN matches DLP_CHANGED → covers lines 539-544
+        self.assertTrue(service._is_dlp_changed_aen(FakeUdevObj(nvme_aen=hex(ctrl.DLP_CHANGED))))
+
+    def test_event_matches_no_event(self):
+        self.assertFalse(service._event_matches(FakeUdevObj(), ('connected',)))
+
+    def test_event_matches_not_in_list(self):
+        self.assertFalse(service._event_matches(FakeUdevObj(nvme_event='disconnect'), ('connected',)))
+
+    def test_event_matches_true(self):
+        # Event in list → covers lines 553-554
+        self.assertTrue(
+            service._event_matches(FakeUdevObj(nvme_event='connected'), ('connected', 'rediscover'))
+        )
+
+
+class FakeController:
+    tid = 'fake-tid'
+    device = 'nvme?'
+
+    def all_ops_completed(self):
+        return False
+
+    def disconnect(self, cb, keep):
+        cb(self, True)
+
+    def info(self):
+        return {}
+
+
+class TestCtrlTerminator(unittest.TestCase):
+    '''Unit tests for service.CtrlTerminator'''
+
+    def setUp(self):
+        log.init(syslog=False)
+
+    def test_ctrl_terminator_pending(self):
+        term = service.CtrlTerminator()
+        fc = FakeController()
+        removed = []
+        cb = lambda ctrl, ok: removed.append(ok)
+
+        # With empty list, pending_disposal always returns False
+        self.assertFalse(term.pending_disposal('fake-tid'))
+
+        term.dispose(fc, cb, keep_connection=False)
+
+        # pending_disposal — covers lines 87-88
+        self.assertTrue(term.pending_disposal('fake-tid'))
+        self.assertFalse(term.pending_disposal('other-tid'))
+
+        # info() — covers line 97
+        info = term.info()
+        self.assertIn('terminator.audit timer', info)
+
+        # _on_disposal_check() — covers lines 120-121
+        # fc.all_ops_completed() returns False → controller stays pending
+        result = term._on_disposal_check()
+        from gi.repository import GLib
+        self.assertEqual(result, GLib.SOURCE_CONTINUE)
+        self.assertTrue(term.pending_disposal('fake-tid'))
+
+        # kill() with non-empty _controllers — covers line 111
+        term.kill()
+        self.assertEqual(removed, [True])
 
 
 if __name__ == '__main__':
